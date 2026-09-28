@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
+import changelog as changelog_tool  # noqa: E402
 import version as version_tool  # noqa: E402
 
 DIST = ROOT / "dist"
@@ -82,7 +84,8 @@ def cmd_check(_: argparse.Namespace) -> int:
 
 def cmd_linux(_: argparse.Namespace) -> int:
     v = version()
-    say(f"交叉编译 linux/amd64 linux/arm64（版本 {v}）")
+    ch = version_tool.read_channel()
+    say(f"交叉编译 linux/amd64 linux/arm64（版本 {v}，通道 {ch}）")
     for arch in ("amd64", "arm64"):
         out_dir = DIST / arch
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +93,9 @@ def cmd_linux(_: argparse.Namespace) -> int:
         run(
             [
                 "go", "build", "-trimpath",
-                "-ldflags", f"-s -w -X main.version={v}",
+                # 通道也要注入：运行时靠它决定检查更新时认哪些发布，
+                # 只注入版本会让二进制永远以为自己在 stable 通道上。
+                "-ldflags", f"-s -w -X main.version={v} -X main.channel={ch}",
                 "-o", str(out), ".",
             ],
             cwd=ROOT,
@@ -242,6 +247,16 @@ def cmd_nas_test(_: argparse.Namespace) -> int:
             nas_put(client, path, f"/root/yc7zip-test/{pkg}.test")
 
         say("在 NAS 上跑测试")
+        v = version()
+        ch = version_tool.read_channel()
+        # 先核对二进制里确实带着注入的版本与通道：这类缺失运行时不会报错，
+        # 只会在"检查更新永远看不到预发布"这种地方悄悄表现出来。
+        info = nas_run(client, "cd /root/yc7zip-test && ./yc7zip -build-info").strip()
+        if f"version={v}" not in info or f"channel={ch}" not in info:
+            print(f"  ❌ 构建信息与预期不符：得到 {info!r}，期望 version={v} channel={ch}", file=sys.stderr)
+            return 1
+        print(f"  ✅ 构建信息核对通过：{info}")
+
         nas_run(
             client,
             "cd /root/yc7zip-test && chmod +x yc7zip engine.test server.test "
@@ -346,15 +361,39 @@ def cmd_nas_download(_: argparse.Namespace) -> int:
     """把下载页与产物放到 NAS 的下载目录。"""
     target = "/vol5/1000/空间4/YC-7ZIP"
     v = version()
-    say(f"准备下载页产物（版本 {v}）")
+    channel = version_tool.read_channel()
+    say(f"准备下载页产物（版本 {v}，通道 {channel}）")
 
     dl = DIST / "dl"
     if dl.exists():
         shutil.rmtree(dl)
     dl.mkdir(parents=True)
-    shutil.copy2(ROOT / "deploy" / "download-page" / "index.html", dl / "index.html")
+
+    # 下载页是静态页，构建时把 CHANGELOG.md 渲染进去、并盖上版本与通道章，
+    # 这样页面不依赖任何运行时请求，扔在 NAS 上就能直接看。
+    page = (ROOT / "deploy" / "download-page" / "index.html").read_text(encoding="utf-8")
+    releases = changelog_tool.parse((ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+    rendered = changelog_tool.render(releases, limit=3)
+    page = re.sub(
+        r"<!-- CHANGELOG:BEGIN -->.*?<!-- CHANGELOG:END -->",
+        "<!-- CHANGELOG:BEGIN -->\n" + rendered + "\n    <!-- CHANGELOG:END -->",
+        page,
+        flags=re.S,
+    )
+    label = version_tool.channel_label(channel)
+    page = page.replace("<!-- CHANNEL_CLASS -->", f'data-channel="{channel}"')
+    page = page.replace("<!-- CHANNEL_BADGE -->", label)
+    page = page.replace("<!-- VERSION -->", v)
+    page = page.replace("<!-- FPK_VERSION -->", version_tool.fpk_version(v))
+    (dl / "index.html").write_text(page, encoding="utf-8", newline="\n")
+
     shutil.copy2(ROOT / "assets" / "images" / "icon.png", dl / "icon.png")
     shutil.copy2(ROOT / "VERSION", dl / "VERSION")
+    shutil.copy2(ROOT / "CHANNEL", dl / "CHANNEL")
+    shutil.copy2(ROOT / "CHANGELOG.md", dl / "CHANGELOG.md")
+    # 下载页上直接给 compose 文件，不必再进仓库找
+    shutil.copy2(ROOT / "docker-compose.yml", dl / "docker-compose.yml")
+    shutil.copy2(ROOT / ".env.example", dl / "env.example")
 
     pkg = DIST / "pkg"
     if not (pkg / f"yc-7zip-{v}-linux-amd64.tar.gz").is_file():
@@ -412,6 +451,110 @@ def cmd_ui(args: argparse.Namespace) -> int:
     ).returncode
 
 
+# --------------------------------------------------------------- 发布
+
+
+def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, check=check, capture_output=True, text=True
+    )
+
+
+def env_value(key: str) -> str:
+    """从环境或 .env.local 取值。"""
+    if os.environ.get(key):
+        return os.environ[key].strip()
+    env_file = ROOT / ".env.local"
+    if env_file.is_file():
+        for raw in env_file.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+
+def git_remote_url() -> str:
+    token = env_value("GITHUB_TOKEN")
+    return f"https://x-access-token:{token}@github.com/YCyingchen/YC-7ZIP.git"
+
+
+def cmd_publish(args: argparse.Namespace) -> int:
+    """走完整发布链路：提交 -> 推 GitHub -> 推镜像 -> 更新 NAS -> 刷新下载页。
+
+    这是「每次完成后都要发一次」这条要求的固化：一条命令跑完，
+    不用记有哪几步、也不用担心漏掉某一处。
+    """
+    v = version()
+    channel = version_tool.read_channel()
+    label = version_tool.channel_label(channel)
+    say(f"发布 {v}（{label}）")
+
+    # 1. 本地检查
+    if cmd_check(argparse.Namespace()):
+        print("本地检查未通过，已中止", file=sys.stderr)
+        return 1
+
+    # 2. 提交
+    status = git("status", "--porcelain").stdout.strip()
+    if status:
+        message = args.message or f"{v}: 常规更新"
+        git("-c", "user.name=YCyingchen",
+            "-c", "user.email=ycyingchen@users.noreply.github.com",
+            "commit", "-q", "-am", message, check=False)
+        # -am 不会带上未跟踪的文件，补一次 add
+        git("add", "-A")
+        git("-c", "user.name=YCyingchen",
+            "-c", "user.email=ycyingchen@users.noreply.github.com",
+            "commit", "-q", "-m", message, check=False)
+        print(f"  已提交：{message}")
+    else:
+        print("  工作区干净，无需提交")
+
+    # 3. 推 GitHub
+    remote = git_remote_url()
+    proxy = env_value("NAS_PROXY") or "http://192.168.1.8:7890"
+    git_cfg = ["-c", f"http.proxy={proxy}", "-c", f"https.proxy={proxy}"]
+    head = git("rev-parse", "HEAD").stdout.strip()
+    print(f"  推送 main（经 {proxy}）")
+    git(*git_cfg, "push", remote, "HEAD:main", check=False)
+
+    remote_sha = git(*git_cfg, "ls-remote", remote, "refs/heads/main").stdout.split()
+    remote_sha = remote_sha[0] if remote_sha else ""
+    if remote_sha != head:
+        print("  推送未成功（多为网络问题），重试一次", file=sys.stderr)
+        git(*git_cfg, "push", remote, "HEAD:main", check=False)
+        remote_sha = git(*git_cfg, "ls-remote", remote, "refs/heads/main").stdout.split()
+        remote_sha = remote_sha[0] if remote_sha else ""
+    print(f"  远端 main = {remote_sha[:7]}{'  ✅' if remote_sha == head else '  ❌'}")
+
+    # 4. 打标签触发 Release（测试通道会发成预发布）
+    if remote_sha == head:
+        tags = git("tag", "--list", v).stdout.strip()
+        if not tags:
+            git("tag", v)
+        git(*git_cfg, "push", remote, f"refs/tags/{v}", check=False)
+        print(f"  标签 {v} 已推送（通道 {channel}，Release 为{'预发布' if channel == 'test' else '正式'}）")
+
+    # 5. NAS 侧：构建镜像、推 Docker Hub、打 fpk、重装
+    say("NAS：构建镜像并推 Docker Hub")
+    if cmd_nas_app(argparse.Namespace()):
+        print("NAS 部署失败", file=sys.stderr)
+        return 1
+
+    # 6. 下载页
+    say("刷新下载页")
+    if cmd_nas_download(argparse.Namespace()):
+        print("下载页更新失败", file=sys.stderr)
+        return 1
+
+    say(f"完成：{v}（{label}）")
+    print(f"  仓库   https://github.com/YCyingchen/YC-7ZIP")
+    print(f"  发布   https://github.com/YCyingchen/YC-7ZIP/releases")
+    print(f"  镜像   https://hub.docker.com/r/ycyingchen/yc-7zip")
+    print(f"  下载页 http://192.168.1.9:5666/app/yc7zip/ 或 NAS 上 /vol5/1000/空间4/YC-7ZIP")
+    return 0
+
+
 COMMANDS = {
     "check": cmd_check,
     "linux": cmd_linux,
@@ -420,6 +563,7 @@ COMMANDS = {
     "nas-app": cmd_nas_app,
     "nas-download": cmd_nas_download,
     "ui": cmd_ui,
+    "publish": cmd_publish,
 }
 
 
@@ -430,6 +574,8 @@ def main() -> int:
         p = sub.add_parser(name)
         if name == "ui":
             p.add_argument("url", nargs="?", help="目标地址")
+        if name == "publish":
+            p.add_argument("-m", "--message", help="提交信息")
     args = parser.parse_args()
     try:
         return COMMANDS[args.command](args) or 0

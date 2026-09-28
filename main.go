@@ -25,6 +25,9 @@ import (
 // version is injected at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
+// channel 由构建注入（test / stable），决定检查更新时认哪些发布。
+var channel = "stable"
+
 // defaultRepoURL is where bug reports go; override with -repo when running a fork.
 const defaultRepoURL = "https://github.com/YCyingchen/YC-7ZIP"
 
@@ -83,6 +86,8 @@ func run() int {
 		jobTTL     = fs.Duration("job-ttl", 2*time.Hour, "任务结果保留时长，超时后自动清理")
 		repoURL    = fs.String("repo", envOr("YC7ZIP_REPO", defaultRepoURL), "项目仓库地址，显示在界面上作为反馈入口")
 		showVer    = fs.Bool("version", false, "打印版本后退出")
+		showBuild  = fs.Bool("build-info", false, "打印版本与发布通道后退出")
+		proxyURL   = fs.String("proxy", envOr("YC7ZIP_PROXY", ""), "检查更新用的出站代理，例如 http://192.168.1.8:7890")
 		quiet      = fs.Bool("quiet", false, "只输出错误日志")
 		allowRoots stringList
 	)
@@ -92,7 +97,16 @@ func run() int {
 		return 2
 	}
 	if *showVer {
+		// 只输出版本号：更新流程会用 -version 探测包内程序，
+		// 多输出一个词就会让那个解析出错。
 		fmt.Printf("YC-7ZIP %s\n", version)
+		return 0
+	}
+	if *showBuild {
+		// 版本 + 通道。用来核对构建时确实把 -X main.channel= 注进去了——
+		// 只注入版本、漏了通道的话，二进制会永远以为自己在 stable 上，
+		// 而这种缺失在运行时不报错，只能靠构建后核对。
+		fmt.Printf("version=%s channel=%s\n", version, channel)
 		return 0
 	}
 
@@ -152,6 +166,10 @@ func run() int {
 		AllowRoots: allowRoots,
 		BasePath:   *basePath,
 		RepoURL:    *repoURL,
+		Channel:    channel,
+		Proxy:      *proxyURL,
+		DataDir:    root,
+		Changelog:  string(changelogMD),
 		Logger:     logger,
 	}
 	srv := server.New(cfg, eng, jobs, webFS)

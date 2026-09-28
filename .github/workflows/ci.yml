@@ -54,13 +54,15 @@ jobs:
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o /dev/null .
           done
 
-      - name: 校验版本号与 fpk 源文件
+      - name: 校验版本号、通道与 fpk 源文件
         run: |
           set -eu
-          # check 会同时校验 VERSION 格式与 manifest 的一致性
+          # check 会同时校验 VERSION 格式、发布通道与 manifest 的一致性
           python3 tools/version.py check
 
           v=$(python3 tools/version.py show)
+          ch=$(python3 tools/version.py channel)
+          echo "版本 $v，通道 $ch"
 
           # compose 里的镜像标签也要跟着版本走
           if ! grep -q "ycyingchen/yc-7zip:$v" deploy/fpk/app/docker/docker-compose.yaml; then

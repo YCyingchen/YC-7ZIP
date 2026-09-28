@@ -1,7 +1,7 @@
 services:
   yc7zip:
     container_name: yc7zip
-    image: ycyingchen/yc-7zip:zip2609.001
+    image: ycyingchen/yc-7zip:zip2609.002
     ports:
       # 只绑在本机：飞牛的应用网关是通过下面的 unix socket 进来的，
       # 不需要把端口暴露到局域网。这样磁盘权限放开的同时，

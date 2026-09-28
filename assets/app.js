@@ -62,6 +62,21 @@
       errorTitle: '出错了', copyError: '复制报错信息', errorDetail: '环境信息（报错时一并贴给对方）',
       errorCopied: '报错信息已复制', errorCopyFailed: '复制失败，请手动选中上面的文字',
       reportIssue: '在 GitHub 提交 Issue', repo: '项目仓库 / 反馈问题',
+      settingsTitle: '设置', updateTitle: '版本与更新', wallpaperTitle: '壁纸', changelogTitle: '更新日志',
+      checkUpdate: '检查更新', applyUpdate: '在线更新', localUpdate: '本地更新', checking: '检查中…', updating: '更新中…',
+      currentVersion: '当前版本', channelLabel: '通道', deployMethod: '部署方式',
+      methodBinary: '裸二进制', methodContainer: '容器', methodPackage: '飞牛应用包',
+      alreadyLatest: '已是最新版本（{v}）', newVersionFound: '发现新版本：',
+      selfUpdateOk: '可以在线更新：下载后会校验 SHA256 并原子替换，旧的会备份为 .bak。',
+      confirmUpdate: '确定要下载并替换当前程序吗？完成后服务会自动重启。',
+      updateInstalled: '已更新到', restarting: '进程正在重启，稍后刷新页面即可。',
+      wallpaperHint: '可以用 NAS 上的图片，也可以直接上传一张。暗化是保证文字可读的关键。',
+      wallpaperNone: '未设置壁纸', wallpaperFromNas: '从 NAS 选', wallpaperUpload: '上传图片',
+      wallpaperClear: '清除', wallpaperDim: '暗化', wallpaperBlur: '模糊', wallpaperFit: '铺满方式',
+      wallpaperEnabled: '启用壁纸', wallpaperSaved: '壁纸已更新', wallpaperCleared: '壁纸已清除',
+      fitCover: '铺满裁切', fitContain: '完整显示', fitTile: '平铺',
+      noImageInDir: '这个目录里没有可用的图片', changelogUnavailable: '暂时读不到更新日志',
+      taskDoneHint: '已完成，点击查看结果',
       filterAll: '全部', filterImage: '图片', filterVideo: '视频', filterArchive: '压缩包', filterDoc: '文档',
       viewList: '列表', viewGrid: '图览', noMatch: '当前筛选下没有匹配的文件',
       preview: '预览', selectThis: '选中这个', deselectThis: '取消选中', openOriginal: '新窗口打开',
@@ -122,6 +137,22 @@
       errorDetail: 'Environment (paste this along with the error)',
       errorCopied: 'Error report copied', errorCopyFailed: 'Copy failed — select the text above manually',
       reportIssue: 'Open a GitHub issue', repo: 'Repository / report a bug',
+      settingsTitle: 'Settings', updateTitle: 'Version & updates', wallpaperTitle: 'Wallpaper', changelogTitle: 'Changelog',
+      checkUpdate: 'Check for updates', applyUpdate: 'Update now', localUpdate: 'Update from file',
+      checking: 'Checking…', updating: 'Updating…',
+      currentVersion: 'Current', channelLabel: 'Channel', deployMethod: 'Deployed as',
+      methodBinary: 'binary', methodContainer: 'container', methodPackage: 'fnOS package',
+      alreadyLatest: 'Already up to date ({v})', newVersionFound: 'New version available:',
+      selfUpdateOk: 'In-place update available: the download is verified with SHA256 and swapped atomically; the old binary is kept as .bak.',
+      confirmUpdate: 'Download and replace the running binary? The service restarts afterwards.',
+      updateInstalled: 'Updated to', restarting: 'The process is restarting — reload the page in a moment.',
+      wallpaperHint: 'Use an image from the NAS or upload one. Dimming is what keeps the text readable.',
+      wallpaperNone: 'No wallpaper set', wallpaperFromNas: 'Pick on NAS', wallpaperUpload: 'Upload image',
+      wallpaperClear: 'Clear', wallpaperDim: 'Dim', wallpaperBlur: 'Blur', wallpaperFit: 'Scaling',
+      wallpaperEnabled: 'Enable wallpaper', wallpaperSaved: 'Wallpaper updated', wallpaperCleared: 'Wallpaper cleared',
+      fitCover: 'Cover', fitContain: 'Contain', fitTile: 'Tile',
+      noImageInDir: 'No usable image in that folder', changelogUnavailable: 'Changelog unavailable',
+      taskDoneHint: 'Done — click to view',
       filterAll: 'All', filterImage: 'Images', filterVideo: 'Videos', filterArchive: 'Archives', filterDoc: 'Documents',
       viewList: 'List', viewGrid: 'Gallery', noMatch: 'Nothing matches the current filter',
       preview: 'Preview', selectThis: 'Select this', deselectThis: 'Deselect', openOriginal: 'Open original',
@@ -1346,6 +1377,7 @@
       renderError(null);
       renderResult();
       setStatus(t('done'));
+      updateTaskPill('done', t('taskDoneHint'));
       toast(t('done'), 'success');
       return;
     }
@@ -1362,6 +1394,7 @@
       diagnostics: job.diagnostics || '',
     };
     renderError(state.lastError);
+    updateTaskPill(needsPassword ? 'warn' : 'error', t(needsPassword ? 'wrongPassword' : 'failed'));
     setStatus(needsPassword ? t('wrongPassword') : msg.split('\n')[0]);
     // 详细报错已经留在页面上，toast 只做一次轻提示
     toast(needsPassword ? t('wrongPassword') : t('failed'), 'error', 6000);
@@ -1525,7 +1558,11 @@
     setProgress(pct, stage);
   }
 
-  function hideProgress() { $('progress-layer').hidden = true; }
+  function hideProgress() {
+    $('progress-layer').hidden = true;
+    // 只有既没有结果也没有错误时才复位（例如取消）
+    if (!state.result && !state.lastError) updateTaskPill(null);
+  }
 
   function setProgress(pct, stage) {
     const fill = $('progress-fill');
@@ -1539,7 +1576,61 @@
       $('progress-percent').textContent = `${Math.round(pct)}%`;
     }
     if (stage != null) $('progress-stage').textContent = stage;
+    syncTaskPillFromLayer();
   }
+
+  // 顶栏的常驻任务指示。进度弹层会盖住内容，关掉之后就没有别处能看进度了，
+  // 所以状态要有一个不挡路的落点，并且能一键回到弹层。
+  const TASK_GLYPHS = {
+    running: '<span class="spin"></span>',
+    done: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+      + 'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg>',
+    error: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+      + 'stroke-width="2.2" stroke-linecap="round"><path d="M12 7v7M12 17.5h.01"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+      + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5h.01"/></svg>',
+  };
+
+  function updateTaskPill(state, text) {
+    const pill = $('task-pill');
+    if (!state) {
+      pill.hidden = true;
+      pill.dataset.state = '';
+      $('task-glyph').innerHTML = '';
+      $('task-text').textContent = '';
+      return;
+    }
+    pill.hidden = false;
+    pill.dataset.state = state;
+    $('task-glyph').innerHTML = TASK_GLYPHS[state] || TASK_GLYPHS.running;
+    $('task-text').textContent = text || '';
+  }
+
+  // 从弹层当前内容反推顶栏指示
+  function syncTaskPillFromLayer() {
+    if ($('progress-layer').hidden) return;
+    const pct = $('progress-percent').textContent;
+    const stage = $('progress-stage').textContent;
+    updateTaskPill('running', pct && pct !== '…' ? (pct + ' ' + stage).trim() : stage);
+  }
+
+  function onTaskPillClick() {
+    const state = $('task-pill').dataset.state;
+    if (state === 'running') {
+      // 回到进度弹层，随时能看当前阶段
+      $('progress-layer').hidden = false;
+      return;
+    }
+    if (state === 'error') {
+      $('error-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (state === 'done' || state === 'warn') {
+      $('result-panel').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
 
   // ------------------------------------------------------------- 事件绑定
 
@@ -1591,6 +1682,7 @@
       state.archivePath = '';
       $('archive-panel').hidden = true;
       $('volume-panel').hidden = true;
+      updateTaskPill(null);
       renderBrowser();
       renderPicked();
       renderRunButton();
@@ -1623,6 +1715,7 @@
     $('btn-run').addEventListener('click', run);
     $('btn-error-copy').addEventListener('click', copyError);
     $('btn-error-copy2').addEventListener('click', copyError);
+    $('task-pill').addEventListener('click', onTaskPillClick);
     $('btn-cancel').addEventListener('click', async () => {
       if (state.jobId) {
         try { await api(`/api/jobs/${state.jobId}/cancel`, { method: 'POST' }, 10000); } catch { /* 已结束 */ }
@@ -1788,8 +1881,357 @@
     } catch { /* 隐私模式 */ }
     $('view-list').classList.toggle('is-active', state.view === 'list');
     $('view-grid').classList.toggle('is-active', state.view === 'grid');
+    bindSettingsEvents();
+    loadSettings();
     checkHealth().then(openFromQuery);
     setInterval(checkHealth, 60000);
+  }
+
+  // ==================================================== 设置：壁纸与更新
+
+  const settingsState = { data: null, update: null };
+
+  // 壁纸铺在最底层的固定层，面板照旧是实色——文字始终落在实色上，
+  // 不会出现"浅色照片上白字看不清"。暗化 scrim 按当前主题算。
+  function applyWallpaper(settings) {
+    const root = document.documentElement;
+    const body = document.body;
+    settingsState.data = settings;
+
+    const on = settings && settings.wallpaper && settings.has_wallpaper;
+    body.classList.toggle('has-wallpaper', !!on);
+    if (!on) return;
+
+    const light = root.dataset.theme === 'light';
+    const rgb = light ? '255,255,255' : '11,15,20';
+    const dim = Math.max(0, Math.min(90, settings.dim == null ? 45 : settings.dim)) / 100;
+    root.style.setProperty('--wp-scrim', 'rgba(' + rgb + ',' + dim + ')');
+    root.style.setProperty('--wp-blur', (settings.blur || 0) + 'px');
+
+    const fit = settings.fit || 'cover';
+    root.style.setProperty('--wp-size', fit === 'tile' ? 'auto' : fit);
+    root.style.setProperty('--wp-repeat', fit === 'tile' ? 'repeat' : 'no-repeat');
+
+    const v = encodeURIComponent(settings.updated_at || '0');
+    root.style.setProperty('--wp-image', 'url("' + apiPath('/api/wallpaper') + '?v=' + v + '")');
+  }
+
+  async function loadSettings() {
+    try {
+      const settings = await api('/api/ui-settings', {}, 10000);
+      applyWallpaper(settings);
+      syncSettingsForm(settings);
+    } catch (e) { /* 服务端没起来时按没有设置处理 */ }
+  }
+
+  function syncSettingsForm(settings) {
+    if (!settings) return;
+    const dim = settings.dim == null ? 45 : settings.dim;
+    const blur = settings.blur == null ? 0 : settings.blur;
+    $('wp-dim').value = dim;
+    $('wp-dim-out').textContent = dim + '%';
+    $('wp-blur').value = blur;
+    $('wp-blur-out').textContent = blur + ' px';
+    $('wp-fit').value = settings.fit || 'cover';
+    $('wp-enabled').checked = !!settings.wallpaper;
+
+    const preview = $('wallpaper-preview');
+    const empty = $('wallpaper-empty');
+    if (settings.has_wallpaper) {
+      empty.hidden = true;
+      preview.style.backgroundImage =
+        'url("' + apiPath('/api/wallpaper') + '?v=' + encodeURIComponent(settings.updated_at || '0') + '")';
+    } else {
+      empty.hidden = false;
+      preview.style.backgroundImage = '';
+    }
+  }
+
+  async function saveSettings(patch) {
+    const cur = settingsState.data || {};
+    const body = {
+      wallpaper: patch.wallpaper == null ? (cur.wallpaper || false) : patch.wallpaper,
+      dim: patch.dim == null ? (cur.dim == null ? 45 : cur.dim) : patch.dim,
+      blur: patch.blur == null ? (cur.blur || 0) : patch.blur,
+      fit: patch.fit || cur.fit || 'cover',
+    };
+    const saved = await api('/api/ui-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, 15000);
+    applyWallpaper(saved);
+    syncSettingsForm(saved);
+    return saved;
+  }
+
+  async function uploadWallpaper(file) {
+    const form = new FormData();
+    form.append('image', file, file.name);
+    const res = await fetch(apiPath('/api/wallpaper'), { method: 'POST', body: form });
+    const data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    applyWallpaper(data);
+    syncSettingsForm(data);
+    toast(t('wallpaperSaved'), 'success');
+  }
+
+  async function clearWallpaper() {
+    const data = await api('/api/wallpaper', { method: 'DELETE' }, 15000);
+    applyWallpaper(data);
+    syncSettingsForm(data);
+    toast(t('wallpaperCleared'), 'success');
+  }
+
+  function renderUpdateStatus(status) {
+    const methods = { binary: t('methodBinary'), container: t('methodContainer'), package: t('methodPackage') };
+    $('update-current').innerHTML =
+      '<span>' + escapeHtml(t('currentVersion')) + ' <b>' + escapeHtml(status.current || '') + '</b></span>' +
+      '<span>' + escapeHtml(t('channelLabel')) + ' <b>' + escapeHtml(status.channel || '') + '</b></span>' +
+      '<span>' + escapeHtml(t('deployMethod')) + ' <b>' + escapeHtml(methods[status.method] || status.method || '') + '</b></span>';
+
+    const result = $('update-result');
+    const hint = $('update-hint');
+    const apply = $('btn-update-apply');
+
+    if (status.error) {
+      result.hidden = false;
+      result.dataset.kind = 'err';
+      result.textContent = status.error;
+    } else if (status.has_update) {
+      result.hidden = false;
+      result.dataset.kind = 'ok';
+      result.textContent = t('newVersionFound') + ' ' + status.latest + '\n' +
+        (status.published_at ? status.published_at + '\n' : '') +
+        (status.notes ? '\n' + status.notes.slice(0, 1200) : '');
+    } else if (status.latest) {
+      result.hidden = false;
+      result.dataset.kind = '';
+      result.textContent = t('alreadyLatest', { v: status.current });
+    } else {
+      result.hidden = true;
+    }
+
+    apply.hidden = !(status.has_update && status.can_self_update);
+    hint.textContent = status.can_self_update ? t('selfUpdateOk') : (status.reason || '');
+  }
+
+  async function checkUpdate() {
+    const btn = $('btn-update-check');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = t('checking');
+    try {
+      const status = await api('/api/update/check', { method: 'POST' }, 40000);
+      settingsState.update = status;
+      renderUpdateStatus(status);
+    } catch (err) {
+      $('update-result').hidden = false;
+      $('update-result').dataset.kind = 'err';
+      $('update-result').textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  async function applyUpdate() {
+    if (!window.confirm(t('confirmUpdate'))) return;
+    const btn = $('btn-update-apply');
+    btn.disabled = true;
+    btn.textContent = t('updating');
+    try {
+      const result = await api('/api/update/apply', { method: 'POST' }, 900000);
+      $('update-result').hidden = false;
+      $('update-result').dataset.kind = 'ok';
+      $('update-result').textContent = t('updateInstalled') + ' ' + result.installed + '\n' + t('restarting');
+      toast(t('updateInstalled'), 'success');
+    } catch (err) {
+      $('update-result').hidden = false;
+      $('update-result').dataset.kind = 'err';
+      $('update-result').textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = t('applyUpdate');
+    }
+  }
+
+  async function uploadUpdate(file) {
+    const form = new FormData();
+    form.append('package', file, file.name);
+    const res = await fetch(apiPath('/api/update/upload'), { method: 'POST', body: form });
+    const data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    $('update-result').hidden = false;
+    $('update-result').dataset.kind = 'ok';
+    $('update-result').textContent = t('updateInstalled') + ' ' + data.installed + '\n' + t('restarting');
+    toast(t('updateInstalled'), 'success');
+  }
+
+  // 只认 CHANGELOG 里实际用到的那点 markdown：版本标题、小节、列表、加粗、代码。
+  // 为了这个引一个渲染器不划算，还要自己盯转义。
+  function renderChangelog(markdown) {
+    function esc(s) {
+      return String(s).replace(/[&<>]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c];
+      });
+    }
+    function inline(s) {
+      return esc(s)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+    }
+
+    const html = [];
+    let open = false;
+    let inList = false;
+    let shown = 0;
+
+    function closeList() { if (inList) { html.push('</ul>'); inList = false; } }
+    function closeRelease() { closeList(); if (open) { html.push('</article>'); open = false; } }
+
+    for (const raw of String(markdown).split('\n')) {
+      const line = raw.replace(/\s+$/, '');
+      const ver = line.match(/^##\s+(zip\d{4}\.\d{3})\s*[·・]\s*(.+?)\s*$/);
+      if (ver) {
+        if (shown >= 3) break;
+        shown++;
+        closeRelease();
+        html.push('<article class="release"><header class="release-head">' +
+          '<span class="release-ver">' + esc(ver[1]) + '</span>' +
+          '<span class="release-date">' + esc(ver[2]) + '</span></header>');
+        open = true;
+        continue;
+      }
+      if (!open) continue;
+
+      const head = line.match(/^###\s+(.+?)\s*$/);
+      if (head) {
+        closeList();
+        html.push('<h4 class="release-section">' + inline(head[1]) + '</h4>');
+        continue;
+      }
+      if (line.startsWith('- ')) {
+        if (!inList) { html.push('<ul class="release-items">'); inList = true; }
+        html.push('<li>' + inline(line.slice(2).trim()) + '</li>');
+        continue;
+      }
+      // 折行续接：中文之间不补空格
+      if (line.startsWith('  ') && inList && html.length) {
+        const i = html.length - 1;
+        if (html[i].endsWith('</li>')) {
+          html[i] = html[i].replace(/<\/li>$/, ' ') + inline(line.trim()) + '</li>';
+        }
+      }
+    }
+    closeRelease();
+    return html.join('');
+  }
+
+  async function loadChangelog() {
+    const host = $('changelog-inline');
+    try {
+      const data = await api('/api/changelog', {}, 10000);
+      const md = (data && data.markdown) || '';
+      host.innerHTML = md
+        ? renderChangelog(md)
+        : '<p class="release-more">' + escapeHtml(t('changelogUnavailable')) + '</p>';
+    } catch (e) {
+      host.innerHTML = '<p class="release-more">' + escapeHtml(t('changelogUnavailable')) + '</p>';
+    }
+  }
+
+  function openSettings() {
+    $('settings-modal').hidden = false;
+    api('/api/update', {}, 10000).then(renderUpdateStatus).catch(function () {});
+    loadSettings();
+    loadChangelog();
+  }
+
+  // 从 NAS 上挑一张图当壁纸：复用已有的目录选择弹层
+  async function pickWallpaperFromNas() {
+    state.pickerFor = 'wallpaper';
+    await openPicker(state.browserPath || (state.browserRoots[0] && state.browserRoots[0].path) || '');
+    const confirm = $('server-confirm');
+    confirm.onclick = async function () {
+      const dir = state.pickerPath || state.pickerSelected;
+      $('server-modal').hidden = true;
+      confirm.onclick = null;
+      if (!dir) return;
+      try {
+        const listing = await api('/api/browse?path=' + encodeURIComponent(dir), {}, 20000);
+        const image = (listing.entries || []).find(function (e) {
+          return !e.is_dir && kindOf(e.name) === 'image';
+        });
+        if (!image) { toast(t('noImageInDir'), 'warn'); return; }
+        const saved = await api('/api/wallpaper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_path: image.path }),
+        }, 60000);
+        applyWallpaper(saved);
+        syncSettingsForm(saved);
+        toast(t('wallpaperSaved'), 'success');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+  }
+
+  function bindSettingsEvents() {
+    $('settings-toggle').addEventListener('click', openSettings);
+    $('settings-close').addEventListener('click', function () { $('settings-modal').hidden = true; });
+    $('settings-modal').addEventListener('click', function (e) {
+      if (e.target === $('settings-modal')) $('settings-modal').hidden = true;
+    });
+
+    $('btn-update-check').addEventListener('click', checkUpdate);
+    $('btn-update-apply').addEventListener('click', applyUpdate);
+    $('btn-update-local').addEventListener('click', function () { $('update-file').click(); });
+    $('update-file').addEventListener('change', async function (e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        await uploadUpdate(file);
+      } catch (err) {
+        $('update-result').hidden = false;
+        $('update-result').dataset.kind = 'err';
+        $('update-result').textContent = err.message;
+      }
+    });
+
+    $('btn-wallpaper-nas').addEventListener('click', pickWallpaperFromNas);
+    $('btn-wallpaper-upload').addEventListener('click', function () { $('wallpaper-file').click(); });
+    $('wallpaper-file').addEventListener('change', async function (e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try { await uploadWallpaper(file); } catch (err) { toast(err.message, 'error'); }
+    });
+    $('btn-wallpaper-clear').addEventListener('click', async function () {
+      try { await clearWallpaper(); } catch (err) { toast(err.message, 'error'); }
+    });
+
+    $('wp-dim').addEventListener('input', function (e) {
+      $('wp-dim-out').textContent = e.target.value + '%';
+      const s = Object.assign({}, settingsState.data || {}, { wallpaper: true, has_wallpaper: true, dim: Number(e.target.value) });
+      applyWallpaper(s);
+    });
+    $('wp-dim').addEventListener('change', function () {
+      saveSettings({ dim: Number($('wp-dim').value) }).catch(function () {});
+    });
+
+    $('wp-blur').addEventListener('input', function (e) {
+      $('wp-blur-out').textContent = e.target.value + ' px';
+      const s = Object.assign({}, settingsState.data || {}, { wallpaper: true, has_wallpaper: true, blur: Number(e.target.value) });
+      applyWallpaper(s);
+    });
+    $('wp-blur').addEventListener('change', function () {
+      saveSettings({ blur: Number($('wp-blur').value) }).catch(function () {});
+    });
+
+    $('wp-fit').addEventListener('change', function () { saveSettings({ fit: $('wp-fit').value }).catch(function () {}); });
+    $('wp-enabled').addEventListener('change', function () { saveSettings({ wallpaper: $('wp-enabled').checked }).catch(function () {}); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

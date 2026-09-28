@@ -37,7 +37,7 @@ jobs:
           go-version: '1.24'
           cache: true
 
-      - name: 解析版本号
+      - name: 解析版本号与通道
         id: ver
         run: |
           set -eu
@@ -57,6 +57,7 @@ jobs:
             exit 1
           fi
           echo "value=$v" >> "$GITHUB_OUTPUT"
+          echo "channel=$(python3 tools/version.py channel)" >> "$GITHUB_OUTPUT"
 
       - name: 编译
         env:
@@ -66,7 +67,7 @@ jobs:
         run: |
           mkdir -p dist/${{ matrix.arch }}
           go build -trimpath \
-            -ldflags "-s -w -X main.version=${{ steps.ver.outputs.value }}" \
+            -ldflags "-s -w -X main.version=${{ steps.ver.outputs.value }} -X main.channel=${{ steps.ver.outputs.channel }}" \
             -o dist/${{ matrix.arch }}/yc7zip .
 
       - name: 取官方 7-Zip
@@ -110,37 +111,75 @@ jobs:
           rm -rf dist/bin-*
           find dist -type f | sort
 
-      - name: 解析版本号
+      - name: 解析版本号与通道
         id: ver
-        run: echo "value=$(python3 tools/version.py show)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -eu
+          echo "value=$(python3 tools/version.py show)" >> "$GITHUB_OUTPUT"
+          echo "channel=$(python3 tools/version.py channel)" >> "$GITHUB_OUTPUT"
+
+      - name: 检查 Docker Hub 凭据
+        id: creds
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::缺少 DOCKERHUB_TOKEN，跳过 Docker Hub 推送。Release 里的二进制与 fpk 不受影响。"
+          fi
 
       - uses: docker/setup-qemu-action@v3
+        if: steps.creds.outputs.ok == 'true'
       - uses: docker/setup-buildx-action@v3
+        if: steps.creds.outputs.ok == 'true'
 
       - name: 登录 Docker Hub
+        if: steps.creds.outputs.ok == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: 登录 GHCR
+        if: steps.creds.outputs.ok == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 版本标签永远打，且不可变；通道标签决定它是否成为 :test 或 :latest
+      - name: 计算镜像标签
+        id: tags
+        run: |
+          set -eu
+          v="${{ steps.ver.outputs.value }}"
+          ch="${{ steps.ver.outputs.channel }}"
+          channel_tag=$([ "$ch" = "stable" ] && echo latest || echo test)
+          {
+            echo "list<<EOF"
+            echo "${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}:$v"
+            echo "${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}:$channel_tag"
+            echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$v"
+            echo "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$channel_tag"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "通道 $ch -> :$channel_tag"
+
       - name: 构建并推送
+        if: steps.creds.outputs.ok == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.value }}
-            ${{ env.DOCKERHUB_USER }}/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.value }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.tags.outputs.list }}
+
+      - name: 跳过说明
+        if: steps.creds.outputs.ok != 'true'
+        run: |
+          echo "本次没有推送镜像（缺少 Docker Hub 凭据）。"
+          echo "补上仓库机密 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 后重新运行本工作流即可。"
 
   release:
     name: 发布
@@ -165,7 +204,7 @@ jobs:
             rm -rf "$stage"; mkdir -p "$stage"
             cp "dist/bin-$arch/yc7zip" "$stage/"
             cp "dist/bin-$arch/7zz"    "$stage/"
-            cp README.md "$stage/" 2>/dev/null || true
+            cp README.md CHANGELOG.md "$stage/"
             cp deploy/start.sh deploy/stop.sh "$stage/"
             tar -czf "release/$stage.tar.gz" "$stage"
           done
@@ -176,16 +215,30 @@ jobs:
           cp -r deploy/fpk "$stage/fpk"
           tar -czf "release/$stage.tar.gz" "$stage"
 
+          # compose 部署要用的两个文件，单独打个包方便直接下
+          mkdir -p release/compose
+          cp docker-compose.yml release/compose/
+          cp .env.example release/compose/
+          tar -czf "release/yc-7zip-$version-compose.tar.gz" -C release compose
+          rm -rf release/compose
+
           (cd release && sha256sum ./*.tar.gz > SHA256SUMS.txt)
           ls -la release
+
+      - name: 读取发布通道
+        run: echo "channel=$(python3 tools/version.py channel)" >> "$GITHUB_ENV"
 
       - name: 生成 Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
           generate_release_notes: true
+          # 测试通道走预发布，正式通道才是一个正常的 Release
+          prerelease: ${{ env.channel == 'test' }}
           body: |
             ## YC-7ZIP ${{ github.ref_name }}
+
+            ${{ env.channel == 'test' && '⚠️ **这是测试版**，镜像标签为 `:test`，功能可能继续调整。' || '✅ **正式版**，镜像标签为 `:latest`。' }}
 
             网页端的压缩与解压工具，直接在 NAS 上读写文件，支持 7z / ZIP / RAR / TAR 等格式，
             并支持**分卷压缩与分卷解压**（飞牛 fnOS 的原生压缩没有分卷）。
@@ -198,15 +251,14 @@ jobs:
             | --- | --- |
             | `yc-7zip-*-linux-amd64.tar.gz` | x86_64 NAS / 服务器，解压后执行 `./start.sh` |
             | `yc-7zip-*-linux-arm64.tar.gz` | ARM64 设备 |
+            | `yc-7zip-*-compose.tar.gz` | `docker-compose.yml` 与 `.env.example` |
             | `yc-7zip-*-fpk-src.tar.gz` | 飞牛 fnOS 应用包源码，用 `fnpack build` 生成 `.fpk` |
 
-            ### Docker
+            ### Docker Compose
 
-            ```
-            docker run -d --name yc-7zip -p 8090:8080 \
-              -v /vol1:/vol1 \
-              ycyingchen/yc-7zip:${{ github.ref_name }} \
-              -addr :8080 -data /data -allow-root /vol1
+            ```bash
+            cp .env.example .env    # 把 YC7ZIP_SHARE 指向你的数据目录
+            docker compose up -d
             ```
 
             多架构镜像：`linux/amd64`、`linux/arm64`。
@@ -216,3 +268,5 @@ jobs:
             - RAR 只能解压：RAR 的压缩算法未开放授权，任何第三方软件都无法生成 `.rar`。
             - 分卷解压时选中任意一卷即可，程序会自动找到第一卷并收集其余分卷。
             - `-allow-root /` 表示放开全部路径；不传则只能上传文件，不能直接读写 NAS。
+
+            完整改动见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)。

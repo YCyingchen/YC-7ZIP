@@ -123,7 +123,10 @@ footer a{color:var(--dim)}
     <div>
       <h1>YC-7ZIP</h1>
       <div class="sub">网页端压缩解压 · 直读 NAS 文件 · 支持分卷</div>
-      <span class="ver" id="ver">zip2609.001</span>
+      <div class="ver-row">
+        <span class="ver" id="ver"><!-- VERSION --></span>
+        <span class="chan" id="chan" <!-- CHANNEL_CLASS -->><!-- CHANNEL_BADGE --></span>
+      </div>
     </div>
   </div>
 
@@ -136,17 +139,31 @@ footer a{color:var(--dim)}
   <h2>下载</h2>
 
   <div class="card">
-    <h3>Docker 镜像 <span class="tag">推荐</span></h3>
-    <p>多架构镜像，x86_64 与 ARM64 都能用。镜像内自带官方 7-Zip，无需另装。</p>
-<pre>docker run -d --name yc-7zip \
-  -p 8090:8080 \
-  -v /vol1:/vol1 \
-  -v yc7zip-data:/data \
-  ycyingchen/yc-7zip:latest \
-  -addr :8080 -data /data -allow-root /vol1</pre>
+    <h3>Docker Compose <span class="tag">推荐</span></h3>
+    <p>多架构镜像，x86_64 与 ARM64 都能用；镜像内自带官方 7-Zip，无需另装。
+      用 compose 而不是 <code>docker run</code>，升级和改配置都只是改一行。</p>
+<pre># 1. 取这两个文件（右侧按钮可直接下载）
+#    docker-compose.yml  .env.example
+# 2. 复制一份 .env 并按需修改
+cp .env.example .env
+
+# 3. 编辑 .env，把 YC7ZIP_SHARE 指向你 NAS 上的数据目录，例如
+#    YC7ZIP_SHARE=/vol1/1000
+
+# 4. 启动
+docker compose up -d
+
+# 升级：改 .env 里的 YC7ZIP_TAG，然后
+docker compose pull && docker compose up -d</pre>
     <div class="row">
-      <a class="btn btn-primary" href="https://hub.docker.com/r/ycyingchen/yc-7zip" target="_blank" rel="noopener">在 Docker Hub 查看</a>
-      <button class="btn btn-ghost" data-copy="docker pull ycyingchen/yc-7zip:latest">复制拉取命令</button>
+      <a class="btn btn-primary" href="docker-compose.yml" download>下载 docker-compose.yml</a>
+      <a class="btn btn-ghost" href="env.example" download>下载 .env.example</a>
+      <a class="btn btn-ghost" href="https://hub.docker.com/r/ycyingchen/yc-7zip" target="_blank" rel="noopener">Docker Hub</a>
+    </div>
+    <div class="note">
+      <b>路径要点：</b>容器能看到的路径 = compose 里挂进去的路径。应用的 <code>/</code> 是
+      容器自己的根，不是 NAS 的根——数据在哪个卷上，就把那个卷挂进 <code>/share</code> 之类的位置，
+      并把容器内的路径写进 <code>YC7ZIP_ALLOW_ROOTS</code>。
     </div>
   </div>
 
@@ -164,7 +181,7 @@ footer a{color:var(--dim)}
     </div>
     <div class="note">
       <b>安装前必读：</b>fnpack 打包的 manifest 只接受 semver，所以 fpk 内的版本号是
-      <code>26.9.1</code>（对应项目版本 <code>zip2609.001</code>）。
+      <code><!-- FPK_VERSION --></code>（对应项目版本 <code><!-- VERSION --></code>）。
       另外，自己改过代码后必须先 <code>docker push</code> 再装 fpk，否则应用中心拉不到镜像会回滚。
     </div>
   </div>
@@ -193,6 +210,14 @@ footer a{color:var(--dim)}
       <a class="btn btn-ghost" href="https://github.com/YCyingchen/YC-7ZIP/releases" target="_blank" rel="noopener">发布记录</a>
       <a class="btn btn-ghost" href="https://github.com/YCyingchen/YC-7ZIP/issues/new" target="_blank" rel="noopener">反馈问题</a>
     </div>
+  </div>
+
+  <h2>更新日志</h2>
+
+  <div class="card changelog" id="changelog">
+    <!-- CHANGELOG:BEGIN -->
+    <p class="release-more">构建时会把 CHANGELOG.md 渲染到这里。</p>
+    <!-- CHANGELOG:END -->
   </div>
 
   <h2>说明</h2>

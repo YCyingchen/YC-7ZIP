@@ -27,6 +27,9 @@ type Config struct {
 	Auth string
 	// MaxUpload caps a single upload in bytes.
 	MaxUpload int64
+	// DataDir is where persistent server-side state lives (UI settings,
+	// wallpaper). It must be writable.
+	DataDir string
 	// JobTTL is how long an idle workspace survives.
 	JobTTL time.Duration
 	// Version is stamped into responses.
@@ -43,6 +46,15 @@ type Config struct {
 	// RepoURL is the project's public repository, surfaced in the UI so users
 	// have somewhere to send bug reports.
 	RepoURL string
+	// Channel is the release channel this build came from: "test" or "stable".
+	// It decides which releases count as an update and which image tag to use.
+	Channel string
+	// Proxy is an optional outbound HTTP proxy for reaching GitHub, which is
+	// not directly reachable from every network.
+	Proxy string
+	// Changelog is the embedded CHANGELOG.md, served to the in-app settings
+	// panel so upgrade notes are readable without network access.
+	Changelog string
 	// Logger receives structured request logs.
 	Logger *slog.Logger
 }
@@ -56,6 +68,15 @@ type Server struct {
 	webFS  fs.FS
 	mux    *http.ServeMux
 	start  time.Time
+
+	// updates caches the last update check.
+	updates *updateState
+	// restart lets the process exit for a restart after a self-update; set by
+	// the caller so tests can observe it instead of dying.
+	restart func()
+
+	// uiSettings persists the wallpaper and how strongly to render it.
+	uiSettings *uiStore
 }
 
 // New builds a server. webFS must contain index.html at its root.
@@ -64,21 +85,65 @@ func New(cfg Config, eng *engine.Engine, jobs *job.Manager, webFS fs.FS) *Server
 		cfg.Logger = slog.Default()
 	}
 	s := &Server{
-		cfg:    cfg,
-		engine: eng,
-		jobs:   jobs,
-		log:    cfg.Logger,
-		webFS:  webFS,
-		mux:    http.NewServeMux(),
-		start:  time.Now(),
+		cfg:        cfg,
+		engine:     eng,
+		jobs:       jobs,
+		log:        cfg.Logger,
+		webFS:      webFS,
+		mux:        http.NewServeMux(),
+		start:      time.Now(),
+		updates:    &updateState{},
+		uiSettings: newUIStore(cfg.DataDir),
 	}
 	s.routes()
 	return s
 }
 
+// SetRestart installs the hook used after a self-update. When unset the
+// process exits, which is what a service manager needs to pick up the new
+// binary.
+func (s *Server) SetRestart(fn func()) { s.restart = fn }
+
 // Handler returns the composed HTTP handler.
 func (s *Server) Handler() http.Handler {
-	return s.withRecovery(s.withLogging(s.withAuth(s.withBasePath(s.mux))))
+	return s.withRecovery(s.withLogging(s.withCSRFGuard(s.withAuth(s.withBasePath(s.mux)))))
+}
+
+// withCSRFGuard rejects cross-origin state changes.
+//
+// 这套接口用可选的 Basic 认证，而 multipart 表单属于 CORS 的"简单请求"：
+// 浏览器会把缓存的 Basic 凭据自动带上，且不触发预检。于是"管理员访问了一个
+// 恶意页面"就等于把更新接口交了出去——而更新接口能替换可执行文件。
+// JSON 接口不受影响（自定义 Content-Type 会触发预检），出问题的恰恰是
+// 上传发布包这类 multipart 端点，所以这道检查加在方法上而不是内容类型上。
+//
+// 判据是 Origin 与 Host 是否同源；飞牛网关下应用与文件管理器同源，
+// 同源 iframe 因此不受影响。
+func (s *Server) withCSRFGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+			switch site {
+			case "same-origin", "same-site", "none":
+			default:
+				writeError(w, http.StatusForbidden, "拒绝跨站请求")
+				return
+			}
+		}
+		if origin := r.Header.Get("Origin"); origin != "" {
+			parsed, err := url.Parse(origin)
+			if err != nil || !strings.EqualFold(parsed.Host, r.Host) {
+				writeError(w, http.StatusForbidden, "拒绝跨站请求："+origin)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // healthPath is exempt from both the auth gate and the base-path strip, so a
@@ -137,6 +202,20 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/inspect", s.handleInspect)
 	s.mux.HandleFunc("GET /api/thumb", s.handleThumb)
 	s.mux.HandleFunc("GET /api/raw", s.handleRaw)
+
+	// 更新
+	s.mux.HandleFunc("GET /api/update", s.handleUpdateStatus)
+	s.mux.HandleFunc("POST /api/update/check", s.handleUpdateCheck)
+	s.mux.HandleFunc("POST /api/update/apply", s.handleUpdateApply)
+	s.mux.HandleFunc("POST /api/update/upload", s.handleUpdateUpload)
+
+	// 界面设置与壁纸
+	s.mux.HandleFunc("GET /api/changelog", s.handleChangelog)
+	s.mux.HandleFunc("GET /api/ui-settings", s.handleUISettingsGet)
+	s.mux.HandleFunc("PUT /api/ui-settings", s.handleUISettingsPut)
+	s.mux.HandleFunc("GET /api/wallpaper", s.handleWallpaperGet)
+	s.mux.HandleFunc("POST /api/wallpaper", s.handleWallpaperPost)
+	s.mux.HandleFunc("DELETE /api/wallpaper", s.handleWallpaperDelete)
 
 	s.mux.HandleFunc("GET /", s.handleStatic)
 }

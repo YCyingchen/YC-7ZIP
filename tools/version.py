@@ -39,9 +39,32 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "VERSION"
+CHANNEL_FILE = ROOT / "CHANNEL"
 MANIFEST = ROOT / "deploy" / "fpk" / "manifest"
 
 PATTERN = re.compile(r"^zip(\d{2})(\d{2})\.(\d{3})$")
+
+# 发布通道。版本号本身不变，通道决定这个构建发到哪儿、被当成什么：
+#   test   -> 测试版：镜像打 :test，GitHub Release 标记为预发布
+#   stable -> 正式版：镜像打 :latest（同时保留不可变的版本标签）
+CHANNELS = ("test", "stable")
+DEFAULT_CHANNEL = "test"
+
+
+def read_channel() -> str:
+    """返回当前发布通道，环境变量 CHANNEL 优先。"""
+    env = os.environ.get("CHANNEL", "").strip().lower()
+    if env:
+        return env
+    if CHANNEL_FILE.is_file():
+        value = CHANNEL_FILE.read_text(encoding="utf-8").strip().lower()
+        if value:
+            return value
+    return DEFAULT_CHANNEL
+
+
+def channel_label(channel: str) -> str:
+    return {"test": "测试版", "stable": "正式版"}.get(channel, channel)
 
 
 def read_version() -> str:
@@ -99,7 +122,16 @@ def cmd_check(_: argparse.Namespace) -> int:
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 1
-    print(f"版本号合法：{version}（{year} 年 {month} 月第 {revision} 次修改）")
+    channel = read_channel()
+    if channel not in CHANNELS:
+        print(f"未知的发布通道：{channel}（可选 {', '.join(CHANNELS)}）", file=sys.stderr)
+        return 1
+    print(
+        f"版本号合法：{version}（{year} 年 {month} 月第 {revision} 次修改）"
+        f"，通道 {channel}（{channel_label(channel)}）"
+    )
+    if channel == "test":
+        print("  提醒：当前是测试版，镜像会打 :test，Release 会标记为预发布")
     if MANIFEST.is_file():
         want = fpk_version(version)
         got = manifest_version()
@@ -111,6 +143,23 @@ def cmd_check(_: argparse.Namespace) -> int:
             )
             return 1
         print(f"manifest 版本一致：{got}")
+    return 0
+
+
+def cmd_channel(args: argparse.Namespace) -> int:
+    """查看或切换发布通道。"""
+    if not args.set:
+        print(read_channel())
+        return 0
+    value = args.set.strip().lower()
+    if value not in CHANNELS:
+        print(f"未知的发布通道：{value}（可选 {', '.join(CHANNELS)}）", file=sys.stderr)
+        return 1
+    old = read_channel()
+    CHANNEL_FILE.write_text(value + "\n", encoding="utf-8", newline="\n")
+    print(f"发布通道已切换：{old}（{channel_label(old)}） -> {value}（{channel_label(value)}）")
+    if value == "stable":
+        print("  正式版会覆盖镜像的 :latest 标签，GitHub Release 不再是预发布")
     return 0
 
 
@@ -168,6 +217,10 @@ def main() -> int:
     sub.add_parser("show", help="打印当前版本号").set_defaults(func=cmd_show)
     sub.add_parser("fpk", help="打印 fnpack 用的 semver 换算值").set_defaults(func=cmd_fpk)
     sub.add_parser("check", help="校验格式并与 manifest 对齐").set_defaults(func=cmd_check)
+
+    p_channel = sub.add_parser("channel", help="查看或切换发布通道")
+    p_channel.add_argument("--set", help="切换为 test 或 stable")
+    p_channel.set_defaults(func=cmd_channel)
 
     p_bump = sub.add_parser("bump", help="推进修订号")
     p_bump.add_argument("--month", action="store_true", help="强制按当前月份重置")

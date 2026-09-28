@@ -1,13 +1,17 @@
 services:
   yc7zip:
     container_name: yc7zip
-    image: ycyingchen/yc-7zip:1.0.0
+    image: ycyingchen/yc-7zip:zip2609.001
     ports:
-      - "${wizard_app_port}:8080"
+      # 只绑在本机：飞牛的应用网关是通过下面的 unix socket 进来的，
+      # 不需要把端口暴露到局域网。这样磁盘权限放开的同时，
+      # 访问仍然要经过飞牛的登录态。
+      - "127.0.0.1:${wizard_app_port}:8080"
     volumes:
       # 应用目录：unix socket 必须落在这里，飞牛的应用网关才能连上
       - "${TRIM_APPDEST}:/trim"
-      # NAS 上的存储卷：直接读写，这也是"不用上传"的前提
+      # 飞牛的存储卷。NAS 上的用户数据都在这里，容器能看到的路径也就是这些卷。
+      # 如果你的数据还在别的路径（比如自定义挂载点），照这个格式再加一行即可。
       - "/vol1:/vol1"
       - "/vol2:/vol2"
       - "/vol3:/vol3"
@@ -19,7 +23,10 @@ services:
       - YC7ZIP_SOCKET=/trim/app.sock
       - YC7ZIP_BASE_PATH=/app/yc7zip
       - YC7ZIP_DATA=/data
-      - YC7ZIP_ALLOW_ROOTS=/vol1,/vol2,/vol3,/vol4,/vol5
-      # 需要在局域网之外访问时，把下面这行取消注释并改成自己的账号密码
+      # 放开全部路径，不再限制在某一两个目录里。
+      # 容器能读写的就是上面挂进来的那些卷；想收紧就把 "/" 去掉，
+      # 只留需要的目录，例如 "/vol1,/vol1/1000/下载"。
+      - YC7ZIP_ALLOW_ROOTS=/vol1,/vol2,/vol3,/vol4,/vol5,/
+      # 需要在局域网之外直接访问端口时，取消下面这行注释并改成自己的账号密码
       # - YC7ZIP_AUTH=admin:change-me
     restart: always

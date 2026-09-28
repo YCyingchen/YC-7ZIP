@@ -745,6 +745,67 @@ input[type="range"]::-moz-range-thumb {
 #progress-percent { font-family: var(--mono); color: var(--accent); }
 .progress-panel .hint { padding-top: 14px; }
 
+/* --------------------------------------------------------------- 报错 */
+
+/* 失败时不只弹一个会消失的 toast：把完整报错留在页面上，并且可以一键复制。 */
+.error-panel {
+  margin: 18px clamp(16px, 4vw, 34px) 84px;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: var(--danger-soft);
+}
+.error-panel .panel-head {
+  border-bottom-color: color-mix(in srgb, var(--danger) 28%, transparent);
+}
+.error-panel .panel-head h2 { color: var(--danger); }
+
+.error-body {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.error-detail { border-top: 1px solid color-mix(in srgb, var(--danger) 22%, transparent); }
+.error-detail summary {
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-dim);
+  list-style: none;
+}
+.error-detail summary::-webkit-details-marker { display: none; }
+.error-detail summary::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 8px;
+  border-left: 4.5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform .18s;
+}
+.error-detail[open] summary::before { transform: rotate(90deg); }
+
+.error-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 11px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+}
+.error-actions .btn { padding: 7px 15px; font-size: 13px; }
+
+/* 顶栏上的仓库链接，和按钮同一个尺寸，但用 a 标签 */
+a.icon-btn { text-decoration: none; }
+
 /* --------------------------------------------------------------- 结果 */
 
 /* 结果面板排在吸底操作栏之前，底部留出与操作栏等高的间距，避免被遮住。 */

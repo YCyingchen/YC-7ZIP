@@ -31,6 +31,12 @@
     <span class="pill" id="engine-pill" title="">
       <i class="dot" data-state="loading"></i><span id="engine-text" data-i18n="connecting">连接中…</span>
     </span>
+    <a class="icon-btn" id="repo-link" href="https://github.com/YCyingchen/YC-7ZIP" target="_blank" rel="noopener noreferrer"
+       title="项目仓库 / 反馈问题" aria-label="项目仓库">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+        <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>
+      </svg>
+    </a>
     <button class="icon-btn" id="theme-toggle" type="button" title="切换主题" aria-label="切换主题">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
         <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
@@ -236,6 +242,23 @@
     </div>
   </section>
 </main>
+
+<section class="panel error-panel" id="error-panel" hidden>
+  <div class="panel-head">
+    <h2 data-i18n="errorTitle">出错了</h2>
+    <button class="link-btn" id="btn-error-copy" type="button" data-i18n="copyError">复制报错信息</button>
+  </div>
+  <pre class="error-body" id="error-body"></pre>
+  <details class="error-detail">
+    <summary data-i18n="errorDetail">环境信息（报错时一并贴给对方）</summary>
+    <pre class="error-body" id="error-meta"></pre>
+  </details>
+  <div class="error-actions">
+    <button class="link-btn" id="btn-error-copy2" type="button" data-i18n="copyError">复制报错信息</button>
+    <a class="btn btn-ghost" id="btn-error-report" href="#" target="_blank" rel="noopener noreferrer"
+       data-i18n="reportIssue">在 GitHub 提交 Issue</a>
+  </div>
+</section>
 
 <section class="panel result-panel" id="result-panel" hidden>
   <div class="panel-head">

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>YC-7ZIP 下载</title>
+<meta name="description" content="YC-7ZIP — 网页端压缩解压工具，直读 NAS 文件，支持分卷压缩与分卷解压。提供 Docker 镜像、飞牛 fnOS 应用包与 Linux 二进制。">
+<link rel="icon" href="icon.png">
+<style>
+:root{
+  --bg:#0B0F14; --elev:#121821; --sunk:#0E141C; --line:#1F2A38; --line-soft:#172231;
+  --ink:#E6EDF6; --dim:#9FB0C4; --faint:#64748B;
+  --accent:#3DDC97; --accent-ink:#04231A; --accent-soft:rgba(61,220,151,.10); --accent-line:rgba(61,220,151,.35);
+  --warn:#FFB454; --warn-soft:rgba(255,180,84,.10);
+  --radius:14px; --radius-sm:9px;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+[data-theme="light"]{
+  --bg:#F5F7FA; --elev:#fff; --sunk:#EDF1F6; --line:#DCE3EC; --line-soft:#E8EDF4;
+  --ink:#101923; --dim:#4C5A6E; --faint:#8494A6;
+  --accent:#0FA968; --accent-ink:#fff; --accent-soft:rgba(15,169,104,.09); --accent-line:rgba(15,169,104,.3);
+  --warn:#B87400; --warn-soft:rgba(184,116,0,.09);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);
+  font-size:14.5px;line-height:1.65;-webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(900px 420px at 12% -8%,var(--accent-soft),transparent 70%);
+}
+.wrap{position:relative;max-width:860px;margin:0 auto;padding:clamp(28px,6vw,64px) clamp(18px,5vw,36px) 80px}
+
+.brand{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.brand img{width:52px;height:52px;border-radius:14px}
+.brand h1{margin:0;font-size:26px;letter-spacing:.01em}
+.brand .sub{color:var(--faint);font-size:13.5px}
+.ver{
+  display:inline-flex;align-items:center;gap:7px;margin-top:4px;
+  font-family:var(--mono);font-size:12px;color:var(--accent);
+  background:var(--accent-soft);border:1px solid var(--accent-line);
+  padding:3px 10px;border-radius:999px;
+}
+
+.lede{margin:22px 0 30px;color:var(--dim);font-size:15px}
+.lede b{color:var(--ink);font-weight:600}
+
+h2{font-size:14px;letter-spacing:.02em;margin:34px 0 12px;color:var(--faint);font-weight:600;text-transform:uppercase}
+
+.card{
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--elev);
+  padding:20px;margin-bottom:14px;
+}
+.card h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.card .tag{
+  font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);
+}
+.card .tag.muted{background:var(--sunk);color:var(--faint);border-color:var(--line)}
+.card p{margin:0 0 12px;color:var(--dim);font-size:13.5px}
+
+pre{
+  margin:0 0 12px;padding:13px 15px;border-radius:var(--radius-sm);
+  background:var(--sunk);border:1px solid var(--line-soft);
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;
+  overflow-x:auto;color:var(--ink);
+}
+code{font-family:var(--mono);font-size:.94em;background:var(--sunk);padding:1px 6px;border-radius:5px}
+
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 17px;border-radius:var(--radius-sm);border:1px solid transparent;
+  font:inherit;font-size:13.5px;font-weight:500;text-decoration:none;cursor:pointer;
+  transition:background .16s,border-color .16s,color .16s;
+}
+.btn-primary{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{background:var(--sunk);border-color:var(--line);color:var(--dim)}
+.btn-ghost:hover{color:var(--ink);border-color:var(--accent-line)}
+
+.note{
+  border:1px solid var(--line);border-left:3px solid var(--warn);
+  background:var(--warn-soft);border-radius:var(--radius-sm);
+  padding:12px 15px;color:var(--dim);font-size:13px;margin:14px 0 0;
+}
+.note b{color:var(--warn)}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line-soft)}
+th{color:var(--faint);font-weight:500;font-size:12px}
+td:first-child{font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+td{color:var(--dim)}
+
+footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:12.5px}
+footer a{color:var(--dim)}
+.theme-btn{
+  position:fixed;top:18px;right:18px;width:36px;height:36px;border-radius:10px;
+  border:1px solid var(--line);background:var(--elev);color:var(--dim);cursor:pointer;
+  display:grid;place-items:center;
+}
+.theme-btn:hover{color:var(--ink)}
+@media(max-width:560px){.brand h1{font-size:22px}}
+</style>
+</head>
+<body>
+<button class="theme-btn" id="theme" title="切换主题" aria-label="切换主题">
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+  </svg>
+</button>
+
+<div class="wrap">
+
+  <div class="brand">
+    <img src="icon.png" alt="YC-7ZIP">
+    <div>
+      <h1>YC-7ZIP</h1>
+      <div class="sub">网页端压缩解压 · 直读 NAS 文件 · 支持分卷</div>
+      <span class="ver" id="ver">zip2609.001</span>
+    </div>
+  </div>
+
+  <p class="lede">
+    在浏览器里管理 <b>7z / ZIP / RAR / TAR / GZ / XZ / ISO</b> 等格式，
+    直接读写 NAS 上的文件，不需要先把文件上传一遍。
+    支持<b>分卷压缩与分卷解压</b>——选中任意一卷即可解压，程序自动收集其余分卷。
+  </p>
+
+  <h2>下载</h2>
+
+  <div class="card">
+    <h3>Docker 镜像 <span class="tag">推荐</span></h3>
+    <p>多架构镜像，x86_64 与 ARM64 都能用。镜像内自带官方 7-Zip，无需另装。</p>
+<pre>docker run -d --name yc-7zip \
+  -p 8090:8080 \
+  -v /vol1:/vol1 \
+  -v yc7zip-data:/data \
+  ycyingchen/yc-7zip:latest \
+  -addr :8080 -data /data -allow-root /vol1</pre>
+    <div class="row">
+      <a class="btn btn-primary" href="https://hub.docker.com/r/ycyingchen/yc-7zip" target="_blank" rel="noopener">在 Docker Hub 查看</a>
+      <button class="btn btn-ghost" data-copy="docker pull ycyingchen/yc-7zip:latest">复制拉取命令</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>飞牛 fnOS 应用包 <span class="tag">.fpk</span></h3>
+    <p>
+      装好后有两个入口：应用列表里的 <b>YC-7ZIP</b> 图标，以及文件管理器里
+      对压缩包右键 →「打开方式」→ <b>YC-7ZIP 压缩解压</b>。
+    </p>
+<pre># 到「应用中心 → 手动安装」选择下载好的 .fpk 文件
+# 注意：应用中心安装时会去拉 compose 里的镜像，镜像不在仓库会安装失败</pre>
+    <div class="row">
+      <a class="btn btn-primary" href="yc7zip.fpk" download>下载 yc7zip.fpk</a>
+      <a class="btn btn-ghost" href="yc-7zip-fpk-src.tar.gz" download>fpk 源码</a>
+    </div>
+    <div class="note">
+      <b>安装前必读：</b>fnpack 打包的 manifest 只接受 semver，所以 fpk 内的版本号是
+      <code>26.9.1</code>（对应项目版本 <code>zip2609.001</code>）。
+      另外，自己改过代码后必须先 <code>docker push</code> 再装 fpk，否则应用中心拉不到镜像会回滚。
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Linux 二进制</h3>
+    <p>解压后执行 <code>./start.sh</code>，包内自带官方 <code>7zz</code>。</p>
+    <table>
+      <tr><th>文件</th><th>适用</th><th></th></tr>
+      <tr>
+        <td>yc-7zip-linux-amd64.tar.gz</td><td>x86_64 NAS / 服务器</td>
+        <td><a class="btn btn-ghost" href="yc-7zip-linux-amd64.tar.gz" download>下载</a></td>
+      </tr>
+      <tr>
+        <td>yc-7zip-linux-arm64.tar.gz</td><td>ARM64 设备</td>
+        <td><a class="btn btn-ghost" href="yc-7zip-linux-arm64.tar.gz" download>下载</a></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>源码</h3>
+    <p>完整源代码、构建脚本与验收脚本。</p>
+    <div class="row">
+      <a class="btn btn-ghost" href="https://github.com/YCyingchen/YC-7ZIP" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a class="btn btn-ghost" href="https://github.com/YCyingchen/YC-7ZIP/releases" target="_blank" rel="noopener">发布记录</a>
+      <a class="btn btn-ghost" href="https://github.com/YCyingchen/YC-7ZIP/issues/new" target="_blank" rel="noopener">反馈问题</a>
+    </div>
+  </div>
+
+  <h2>说明</h2>
+  <div class="card">
+    <p style="margin-bottom:8px"><b style="color:var(--ink)">RAR 只能解压。</b>
+      RAR 的压缩算法未开放授权，任何第三方软件都无法生成 <code>.rar</code> 文件。</p>
+    <p style="margin-bottom:8px"><b style="color:var(--ink)">为什么单独做一个。</b>
+      飞牛 fnOS 自带的压缩功能没有分卷选项，而分卷恰恰是把大文件投递到网盘、
+      微信、FAT32 移动盘时最常用的能力。</p>
+    <p style="margin:0"><b style="color:var(--ink)">权限。</b>
+      <code>-allow-root</code> 是唯一的安全边界，只有列在这里的目录能被读写。
+      飞牛应用包默认放开所有挂载进来的卷，并把端口只绑在 <code>127.0.0.1</code>，
+      访问必须经过飞牛的登录态。</p>
+  </div>
+
+  <footer>
+    <span id="foot">YC-7ZIP</span> · MIT License ·
+    镜像内附带的 7-Zip 遵循其自身许可（LGPL + unRAR 限制）
+  </footer>
+</div>
+
+<script>
+(function () {
+  // 主题跟随系统，可手动切换并记住
+  var saved = null;
+  try { saved = localStorage.getItem('yc7zip-dl-theme'); } catch (e) {}
+  var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  document.documentElement.dataset.theme = saved || (prefersLight ? 'light' : 'dark');
+  document.getElementById('theme').addEventListener('click', function () {
+    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('yc7zip-dl-theme', next); } catch (e) {}
+  });
+
+  // 复制按钮：非安全上下文没有剪贴板权限，退回选中
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      var done = function () { btn.textContent = '已复制'; setTimeout(function () { btn.textContent = '复制拉取命令'; }, 1600); };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+    });
+  });
+
+  // 有 VERSION 文件就用它，省得手动改页面
+  fetch('VERSION', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : ''; })
+    .then(function (v) {
+      v = (v || '').trim();
+      if (!v) return;
+      document.getElementById('ver').textContent = v;
+      document.getElementById('foot').textContent = 'YC-7ZIP ' + v;
+    })
+    .catch(function () {});
+})();
+</script>
+</body>
+</html>

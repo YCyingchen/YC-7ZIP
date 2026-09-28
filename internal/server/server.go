@@ -39,6 +39,9 @@ type Config struct {
 	// shipped app, which serves its own HTML under /app/<name>/ — so the
 	// server has to strip it itself.
 	BasePath string
+	// RepoURL is the project's public repository, surfaced in the UI so users
+	// have somewhere to send bug reports.
+	RepoURL string
 	// Logger receives structured request logs.
 	Logger *slog.Logger
 }
@@ -77,6 +80,11 @@ func (s *Server) Handler() http.Handler {
 	return s.withRecovery(s.withLogging(s.withAuth(s.withBasePath(s.mux))))
 }
 
+// healthPath is exempt from both the auth gate and the base-path strip, so a
+// container runtime or an uptime monitor can always probe it at a fixed path
+// without knowing how the app is mounted.
+const healthPath = "/api/health"
+
 // withBasePath strips the configured prefix so the router can stay unaware of
 // where the app is mounted.
 //
@@ -90,6 +98,11 @@ func (s *Server) withBasePath(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Liveness is always reachable at the same path, prefixed or not.
+		if r.URL.Path == healthPath {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == prefix {
 			http.Redirect(w, r, prefix+"/", http.StatusTemporaryRedirect)
 			return
@@ -136,7 +149,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The health endpoint stays open so container orchestrators and the
 		// fnOS status hook can probe without credentials.
-		if r.URL.Path == "/api/health" {
+		if r.URL.Path == healthPath {
 			next.ServeHTTP(w, r)
 			return
 		}

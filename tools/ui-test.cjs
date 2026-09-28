@@ -19,7 +19,8 @@ if (!playwrightPath) {
 }
 const { chromium } = require(playwrightPath);
 
-const BASE = process.argv[2] || 'http://192.168.1.9:8090';
+// 末尾去掉斜杠，这样拼接 `/api/...` 不会出现双斜杠
+const BASE = (process.argv[2] || 'http://192.168.1.9:8090').replace(/\/+$/, '');
 const ROOT = process.env.UI_ROOT || '/vol5/1000/空间4/YC-7ZIP/_uitest';
 const OUT = process.env.UI_OUT || path.join(os.tmpdir(), 'yc7zip-ui');
 fs.mkdirSync(OUT, { recursive: true });
@@ -64,7 +65,7 @@ async function browse(page, dir) {
 
   try {
     section('1. 加载与引擎状态');
-    await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(BASE + '/', { waitUntil: 'networkidle', timeout: 30000 });
     check('页面标题正确', (await page.title()).includes('YC-7ZIP'), await page.title());
 
     await page.waitForFunction(() => {
@@ -85,10 +86,11 @@ async function browse(page, dir) {
     await page.screenshot({ path: path.join(OUT, '01-浏览NAS.png'), fullPage: true });
 
     section('2. 进入目录并多选');
-    await page.locator('#browser-list .fname', { hasText: '_uitest' }).first().click();
-    await page.waitForTimeout(600);
-    const crumbs = await page.textContent('#crumbs');
-    check('面包屑显示当前路径', crumbs.includes('_uitest'), crumbs);
+    // ?path 指向目录时应当直接进入，而不是要求用户自己一层层点
+    await page.goto(`${BASE}/?path=${encodeURIComponent(ROOT)}`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForSelector('#browser-list .browser-row', { timeout: 20000 });
+    check('?path 指向目录时自动进入', (await page.textContent('#crumbs')).includes('_uitest'),
+      await page.textContent('#crumbs'));
 
     await page.locator('#browser-list .fname', { hasText: 'src' }).first().click(); // 目录：进入
     await page.waitForTimeout(600);
@@ -208,8 +210,7 @@ async function browse(page, dir) {
     section('6. 被 fnOS 用 ?path 唤起');
     const deep = `${ROOT}/out/${target.name}`;
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto(`${BASE}/?path=${encodeURIComponent(deep)}`, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForSelector('#browser-list .browser-row', { timeout: 20000 });
+    await page.goto(`${BASE}/?path=${encodeURIComponent(deep)}`, { waitUntil: 'networkidle', timeout: 30000 });    await page.waitForSelector('#browser-list .browser-row', { timeout: 20000 });
     await page.waitForTimeout(800);
     check('自动切到解压模式', (await page.getAttribute('#mode-extract', 'aria-selected')) === 'true');
     check('自动定位到文件所在目录', (await page.textContent('#crumbs')).includes('out'));

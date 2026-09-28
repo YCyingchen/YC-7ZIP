@@ -92,6 +92,9 @@ type Job struct {
 	ServerPaths []string `json:"server_paths,omitempty"`
 	// VolumeLabel describes a detected split volume series, if any.
 	VolumeLabel string `json:"volume_label,omitempty"`
+	// Diagnostics carries the context needed to report a failure: job id,
+	// version, engine path, sources and output. Only set when a job fails.
+	Diagnostics string `json:"diagnostics,omitempty"`
 
 	// Workspace bookkeeping, not serialised.
 	Dir    string `json:"-"`

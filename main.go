@@ -25,6 +25,9 @@ import (
 // version is injected at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
+// defaultRepoURL is where bug reports go; override with -repo when running a fork.
+const defaultRepoURL = "https://github.com/YCyingchen/YC-7ZIP"
+
 // stringList collects a repeatable flag.
 type stringList []string
 
@@ -78,6 +81,7 @@ func run() int {
 		auth       = fs.String("auth", envOr("YC7ZIP_AUTH", ""), "HTTP Basic 认证，格式 user:password，留空则不启用")
 		maxUpload  = fs.String("max-upload", envOr("YC7ZIP_MAX_UPLOAD", "4G"), "单个任务的上传总量上限，例如 4G / 500M，0 表示不限制")
 		jobTTL     = fs.Duration("job-ttl", 2*time.Hour, "任务结果保留时长，超时后自动清理")
+		repoURL    = fs.String("repo", envOr("YC7ZIP_REPO", defaultRepoURL), "项目仓库地址，显示在界面上作为反馈入口")
 		showVer    = fs.Bool("version", false, "打印版本后退出")
 		quiet      = fs.Bool("quiet", false, "只输出错误日志")
 		allowRoots stringList
@@ -147,6 +151,7 @@ func run() int {
 		Version:    version,
 		AllowRoots: allowRoots,
 		BasePath:   *basePath,
+		RepoURL:    *repoURL,
 		Logger:     logger,
 	}
 	srv := server.New(cfg, eng, jobs, webFS)

@@ -38,6 +38,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		},
 		"auth_enabled": s.cfg.Auth != "",
 		"allow_roots":  s.cfg.AllowRoots,
+		"repo_url":     s.cfg.RepoURL,
 	})
 }
 
@@ -513,6 +514,7 @@ func (s *Server) launch(j *job.Job, fn func(context.Context) error) {
 			}
 			s.log.Warn("job failed", "job", j.ID, "error", err)
 			s.jobs.Fail(j.ID, err)
+			s.jobs.Update(j.ID, func(jb *job.Job) { jb.Diagnostics = s.jobDiagnostics(j.ID) })
 			return
 		}
 		// A server-side job reports what it wrote through ServerPaths, so
@@ -525,6 +527,33 @@ func (s *Server) launch(j *job.Job, fn func(context.Context) error) {
 		}
 		s.jobs.Finish(j.ID)
 	}()
+}
+
+// jobDiagnostics gathers the context a user needs to report a failure: which
+// job it was, what they asked for, and which 7-Zip ran. Attached to every
+// failed job so the UI can offer a one-click copy.
+func (s *Server) jobDiagnostics(id string) string {
+	jb, ok := s.jobs.Get(id)
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "job: %s\n", jb.ID)
+	fmt.Fprintf(&b, "kind: %s\n", jb.Kind)
+	fmt.Fprintf(&b, "yc7zip: %s\n", s.cfg.Version)
+	if s.engine.BinPath != "" {
+		fmt.Fprintf(&b, "7-Zip: %s (%s)\n", s.engine.BinPath, s.engine.Version)
+	}
+	if len(jb.SourceNames) > 0 {
+		fmt.Fprintf(&b, "sources: %s\n", strings.Join(jb.SourceNames, ", "))
+	}
+	if jb.OutputDir != "" {
+		fmt.Fprintf(&b, "output: %s (%s)\n", jb.OutputDir, jb.OutputMode)
+	}
+	if jb.VolumeLabel != "" {
+		fmt.Fprintf(&b, "volumes: %s\n", jb.VolumeLabel)
+	}
+	return b.String()
 }
 
 // progressBridge converts engine progress into job updates.
@@ -651,6 +680,10 @@ func (s *Server) resolveServerSources(paths []string) (string, []string, error) 
 }
 
 // checkAllowed enforces the allow-root boundary.
+//
+// The filesystem root has to be handled on its own: joining it with a
+// separator produces "//", which no real path starts with, so a "/" root would
+// silently reject everything instead of allowing everything.
 func (s *Server) checkAllowed(abs string) error {
 	for _, root := range s.cfg.AllowRoots {
 		rootAbs, err := filepath.Abs(root)
@@ -658,6 +691,12 @@ func (s *Server) checkAllowed(abs string) error {
 			continue
 		}
 		rootAbs = filepath.Clean(rootAbs)
+		if rootAbs == string(os.PathSeparator) {
+			if filepath.IsAbs(abs) {
+				return nil
+			}
+			continue
+		}
 		if abs == rootAbs || strings.HasPrefix(abs, rootAbs+string(os.PathSeparator)) {
 			return nil
 		}

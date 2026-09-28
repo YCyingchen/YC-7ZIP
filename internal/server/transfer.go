@@ -269,6 +269,37 @@ func archiveBaseName(j *job.Job) string {
 	return "yc7zip-" + j.ID[:8]
 }
 
+// browseRoots renders the configured allow-roots as entries the picker can
+// show. Missing directories are dropped so a package that lists /vol1 … /vol5
+// does not show shortcuts to volumes the NAS does not have, and the filesystem
+// root is labelled rather than left as a bare slash.
+func (s *Server) browseRoots() []browseEntry {
+	seen := map[string]bool{}
+	out := make([]browseEntry, 0, len(s.cfg.AllowRoots))
+	for _, root := range s.cfg.AllowRoots {
+		abs, err := filepath.Abs(root)
+		if err != nil {
+			continue
+		}
+		abs = filepath.Clean(abs)
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+
+		if abs == string(os.PathSeparator) {
+			out = append(out, browseEntry{Name: "根目录 /", Path: abs, IsDir: true})
+			continue
+		}
+		st, err := os.Stat(abs)
+		if err != nil || !st.IsDir() {
+			continue
+		}
+		out = append(out, browseEntry{Name: filepath.Base(abs), Path: abs, IsDir: true})
+	}
+	return out
+}
+
 // browseEntry is one row in the server-side file picker.
 type browseEntry struct {
 	Name  string `json:"name"`
@@ -291,16 +322,12 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 
 	requested := r.URL.Query().Get("path")
 	if requested == "" {
-		roots := make([]browseEntry, 0, len(s.cfg.AllowRoots))
-		for _, root := range s.cfg.AllowRoots {
-			abs, err := filepath.Abs(root)
-			if err != nil {
-				continue
-			}
-			roots = append(roots, browseEntry{Name: filepath.Base(abs), Path: filepath.Clean(abs), IsDir: true})
-		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"enabled": true, "path": "", "parent": "", "roots": roots, "entries": []browseEntry{},
+			"enabled": true,
+			"path":    "",
+			"parent":  "",
+			"roots":   s.browseRoots(),
+			"entries": []browseEntry{},
 		})
 		return
 	}

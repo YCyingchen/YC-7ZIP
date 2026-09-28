@@ -1,15 +1,16 @@
 name: Release
 
-# 打一个 v* 标签即发布：编译多架构二进制、构建并推送多架构镜像到
-# Docker Hub 与 GHCR、打包 fnOS fpk，最后统一挂到 GitHub Release 上。
+# 打一个 zip<YY><MM>.<NNN> 标签即发布（例如 zip2609.001）：
+# 编译多架构二进制、构建并推送多架构镜像到 Docker Hub 与 GHCR、
+# 打包 fnOS fpk 源，最后统一挂到 GitHub Release 上。
 
 on:
   push:
-    tags: ['v*']
+    tags: ['zip*']
   workflow_dispatch:
     inputs:
       version:
-        description: 版本号（不带 v），留空则用分支名
+        description: 版本号，形如 zip2609.001；留空则读取 VERSION 文件
         required: false
 
 permissions:
@@ -39,11 +40,22 @@ jobs:
       - name: 解析版本号
         id: ver
         run: |
+          set -eu
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            v="${{ github.event.inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            v="${GITHUB_REF_NAME}"
           else
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            v=$(sh deploy/version.sh show)
           fi
+          sh deploy/version.sh check
+          # 标签必须和 VERSION 文件一致，否则 manifest、镜像标签、二进制内版本会各说各话
+          file=$(sh deploy/version.sh show)
+          if [ "$v" != "$file" ]; then
+            echo "标签 $v 与 VERSION 文件 $file 不一致" >&2
+            exit 1
+          fi
+          echo "value=$v" >> "$GITHUB_OUTPUT"
 
       - name: 编译
         env:
@@ -99,7 +111,7 @@ jobs:
 
       - name: 解析版本号
         id: ver
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(sh deploy/version.sh show)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -144,7 +156,7 @@ jobs:
       - name: 打包发布件
         run: |
           set -eux
-          version="${GITHUB_REF_NAME#v}"
+          version=$(sh deploy/version.sh show)
           mkdir -p release
 
           for arch in amd64 arm64; do
@@ -177,6 +189,8 @@ jobs:
             网页端的压缩与解压工具，直接在 NAS 上读写文件，支持 7z / ZIP / RAR / TAR 等格式，
             并支持**分卷压缩与分卷解压**（飞牛 fnOS 的原生压缩没有分卷）。
 
+            版本号规则：`zip<年份后两位><月份>.<当月修订号>`。
+
             ### 下载
 
             | 文件 | 用途 |
@@ -189,8 +203,8 @@ jobs:
 
             ```
             docker run -d --name yc-7zip -p 8090:8080 \
-              -v /vol1:/vol1:ro \
-              ycyingchen/yc-7zip:latest \
+              -v /vol1:/vol1 \
+              ycyingchen/yc-7zip:${{ github.ref_name }} \
               -addr :8080 -data /data -allow-root /vol1
             ```
 
@@ -200,3 +214,4 @@ jobs:
 
             - RAR 只能解压：RAR 的压缩算法未开放授权，任何第三方软件都无法生成 `.rar`。
             - 分卷解压时选中任意一卷即可，程序会自动找到第一卷并收集其余分卷。
+            - `-allow-root /` 表示放开全部路径；不传则只能上传文件，不能直接读写 NAS。

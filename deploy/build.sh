@@ -12,7 +12,9 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
-VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
+# 版本号只有一个来源：VERSION 文件（格式 zip<YY><MM>.<NNN>）
+VERSION=$(deploy/version.sh show)
+deploy/version.sh check >/dev/null
 ZIP_VERSION=2501
 
 # 官方 7-Zip 的 Linux 包。amd64 与 arm64 用不同的压缩包。
@@ -83,11 +85,33 @@ cmd_docker () {
   fi
 }
 
+# 单机镜像：某些环境下 buildx 解析不了基础镜像的元数据，
+# 而经典构建器只要本地已有基础镜像就能跑通。
+cmd_image () {
+  arch=${1:-amd64}
+  tag=${2:-$VERSION}
+
+  build_binary "$arch"
+  prepare_sevenzip "$arch"
+
+  echo "预拉基础镜像（经典构建器不会自己去解析元数据）"
+  docker pull debian:12-slim
+
+  echo "用经典构建器构建 linux/$arch 镜像：$tag"
+  DOCKER_BUILDKIT=0 docker build \
+    --build-arg "TARGETARCH=$arch" \
+    -t "ycyingchen/yc-7zip:$tag" \
+    -t "ycyingchen/yc-7zip:latest" \
+    "$ROOT"
+}
+
 case "${1:-}" in
   dist)   cmd_dist ;;
   docker) shift; cmd_docker "$@" ;;
+  image)  shift; cmd_image "$@" ;;
+  version) shift; exec "$ROOT/deploy/version.sh" "$@" ;;
   *)
-    echo "用法：deploy/build.sh {dist|docker [标签]}" >&2
+    echo "用法：deploy/build.sh {dist | docker [标签] | image [架构] [标签] | version ...}" >&2
     exit 2
     ;;
 esac

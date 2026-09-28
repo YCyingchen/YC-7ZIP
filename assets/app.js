@@ -59,6 +59,9 @@
       noFiles: '请先选择要压缩的文件', noArchive: '请先选择一个压缩包',
       needsPassword: '该压缩包已加密，请输入密码', wrongPassword: '密码不正确，请重试',
       done: '已完成', failed: '处理失败', offlineAction: '服务端未连接，无法执行',
+      errorTitle: '出错了', copyError: '复制报错信息', errorDetail: '环境信息（报错时一并贴给对方）',
+      errorCopied: '报错信息已复制', errorCopyFailed: '复制失败，请手动选中上面的文字',
+      reportIssue: '在 GitHub 提交 Issue', repo: '项目仓库 / 反馈问题',
       itemsCount: '{n} 项', totalSize: '总大小', packedSize: '压缩后', ratio: '压缩率',
       enterDir: '进入目录', selectDir: '选择此目录',
       pickerTitle: '选择输出目录', pickerConfirm: '用此目录', close: '关闭',
@@ -110,6 +113,10 @@
       noFiles: 'Choose the files you want to compress first', noArchive: 'Choose an archive first',
       needsPassword: 'This archive is encrypted — enter the password', wrongPassword: 'Wrong password, please try again',
       done: 'Finished', failed: 'Failed', offlineAction: 'Server not connected',
+      errorTitle: 'Something went wrong', copyError: 'Copy error report',
+      errorDetail: 'Environment (paste this along with the error)',
+      errorCopied: 'Error report copied', errorCopyFailed: 'Copy failed — select the text above manually',
+      reportIssue: 'Open a GitHub issue', repo: 'Repository / report a bug',
       itemsCount: '{n} item(s)', totalSize: 'Total', packedSize: 'Packed', ratio: 'Ratio',
       enterDir: 'Open folder', selectDir: 'Use this folder',
       pickerTitle: 'Choose the output folder', pickerConfirm: 'Use this folder', close: 'Close',
@@ -195,6 +202,10 @@
     pollTimer: null,
     uploadXHR: null,
     result: null,
+    /** 最近一次失败的完整信息，用于渲染与复制 */
+    lastError: null,
+    /** 项目仓库地址，由服务端下发，用于顶栏链接与 Issue 预填 */
+    repoUrl: 'https://github.com/YCyingchen/YC-7ZIP',
 
     // 目录选择器用途
     pickerFor: 'source',
@@ -322,6 +333,7 @@
     renderVolume();
     renderResult();
     renderRunButton();
+    $('repo-link').title = t('repo');
     if (!state.online) $('offline-banner').hidden = false;
   }
 
@@ -334,6 +346,10 @@
       state.health = health;
       const roots = Array.isArray(health.allow_roots) ? health.allow_roots : [];
       state.browserRoots = roots;
+      if (health.repo_url) {
+        state.repoUrl = trimSlash(health.repo_url);
+        $('repo-link').href = state.repoUrl;
+      }
       try {
         const data = await api('/api/formats', {}, 8000);
         if (data && Array.isArray(data.formats)) state.formats = data.formats;
@@ -371,7 +387,10 @@
     }
     dot.dataset.state = 'ok';
     text.textContent = t('connected', { v: eng.version || '' });
-    $('engine-pill').title = eng.path;
+    const self = (state.health && state.health.version) || '';
+    $('engine-pill').title = self
+      ? `YC-7ZIP ${self}\n7-Zip: ${eng.path}`
+      : `7-Zip: ${eng.path}`;
   }
 
   // ------------------------------------------------------------- 模式 / 来源
@@ -386,7 +405,9 @@
     state.archivePath = '';
     state.selectedMembers = null;
     state.result = null;
+    state.lastError = null;
     $('result-panel').hidden = true;
+    $('error-panel').hidden = true;
 
     $('mode-compress').classList.toggle('is-active', mode === 'compress');
     $('mode-extract').classList.toggle('is-active', mode === 'extract');
@@ -961,6 +982,8 @@
     }
 
     setBusy(true);
+    state.lastError = null;
+    renderError(null);
     showProgress(t('working'), 0, '');
     try {
       // 已预览过的服务端压缩包复用同一个任务，避免重复读盘
@@ -981,12 +1004,15 @@
     } catch (err) {
       hideProgress();
       setBusy(false);
+      // 同步返回的错误（400 校验失败、密码不对）也要留在页面上
+      state.lastError = { message: err.message, diagnostics: '' };
+      renderError(state.lastError);
       if (err.data && err.data.password_required) {
         const wrong = $('opt-password').value !== '';
         toast(t(wrong ? 'wrongPassword' : 'needsPassword'), 'error');
         setStatus(t(wrong ? 'wrongPassword' : 'needsPassword'));
       } else {
-        toast(err.message, 'error', 7000);
+        toast(err.message.split('\n')[0], 'error', 7000);
         setStatus(t('failed'));
       }
     }
@@ -1073,6 +1099,8 @@
     setBusy(false);
     if (job.status === 'done') {
       state.result = job;
+      state.lastError = null;
+      renderError(null);
       renderResult();
       setStatus(t('done'));
       toast(t('done'), 'success');
@@ -1083,9 +1111,86 @@
       toast(t('cancelled'), 'warn');
       return;
     }
+
     const msg = job.message || t('failed');
-    setStatus(msg);
-    toast(/密码|password/i.test(msg) ? t('wrongPassword') : msg, 'error', 7000);
+    const needsPassword = /密码|password/i.test(msg);
+    state.lastError = {
+      message: msg,
+      diagnostics: job.diagnostics || '',
+    };
+    renderError(state.lastError);
+    setStatus(needsPassword ? t('wrongPassword') : msg.split('\n')[0]);
+    // 详细报错已经留在页面上，toast 只做一次轻提示
+    toast(needsPassword ? t('wrongPassword') : t('failed'), 'error', 6000);
+  }
+
+  // 失败时把完整报错留在页面上：toast 会消失，也复制不了。
+  function renderError(err) {
+    const panel = $('error-panel');
+    if (!err) {
+      panel.hidden = true;
+      $('error-body').textContent = '';
+      $('error-meta').textContent = '';
+      return;
+    }
+    panel.hidden = false;
+    $('error-body').textContent = err.message;
+    $('error-meta').textContent = err.diagnostics || '';
+    $('btn-error-report').href = issueURL(err);
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // 一键把完整报错与运行环境预填进 GitHub Issue，省掉"再复述一遍"的来回。
+  function issueURL(err) {
+    const repo = trimSlash(state.repoUrl || 'https://github.com/YCyingchen/YC-7ZIP');
+    const headline = String(err.message || '').split('\n')[0].slice(0, 90) || '处理失败';
+    const environment = [
+      err.diagnostics || '',
+      `version: ${(state.health && state.health.version) || ''}`,
+      `browser: ${navigator.userAgent}`,
+      `page: ${location.href}`,
+    ].join('\n');
+
+    const body = [
+      '### 我做了什么',
+      '',
+      '（补充：选了哪些文件、点了哪个按钮）',
+      '',
+      '### 期望结果',
+      '',
+      '（补充）',
+      '',
+      '### 实际报错',
+      '',
+      '```',
+      String(err.message || '').slice(0, 4000),
+      '```',
+      '',
+      '### 环境信息',
+      '',
+      '```',
+      environment.slice(0, 3000),
+      '```',
+    ].join('\n');
+
+    const params = new URLSearchParams({ title: `[Bug] ${headline}`, body, labels: 'bug' });
+    return `${repo}/issues/new?${params.toString()}`;
+  }
+
+  function trimSlash(s) { return String(s).replace(/\/+$/, ''); }
+
+  async function copyError() {
+    if (!state.lastError) return;
+    const parts = [state.lastError.message];
+    if (state.lastError.diagnostics) parts.push('', '--- 环境信息 ---', state.lastError.diagnostics);
+    const text = parts.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(t('errorCopied'), 'success');
+    } catch {
+      // 非安全上下文（http + 非 localhost）没有剪贴板权限，退回手选
+      toast(t('errorCopyFailed'), 'warn');
+    }
   }
 
   // ------------------------------------------------------------- 结果
@@ -1262,6 +1367,8 @@
     $('opt-output-dir').addEventListener('input', (e) => { state.outputDir = e.target.value; });
 
     $('btn-run').addEventListener('click', run);
+    $('btn-error-copy').addEventListener('click', copyError);
+    $('btn-error-copy2').addEventListener('click', copyError);
     $('btn-cancel').addEventListener('click', async () => {
       if (state.jobId) {
         try { await api(`/api/jobs/${state.jobId}/cancel`, { method: 'POST' }, 10000); } catch { /* 已结束 */ }
@@ -1286,7 +1393,9 @@
       state.archivePath = '';
       state.inspect = null;
       state.result = null;
+      state.lastError = null;
       $('result-panel').hidden = true;
+      $('error-panel').hidden = true;
       $('archive-panel').hidden = true;
       $('volume-panel').hidden = true;
       renderBrowser();
@@ -1368,11 +1477,24 @@
     if (!path) return;
     const action = params.get('action');
 
+    setSource('server');
+
+    // 先问服务端这是什么：目录就直接进目录，文件才预选并决定模式。
+    let info = null;
+    try {
+      info = await api(`/api/inspect?path=${encodeURIComponent(path)}`, {}, 15000);
+    } catch { /* 路径不可用时退回到按扩展名判断 */ }
+
+    if (info && info.is_dir) {
+      setMode(action === 'extract' ? 'extract' : 'compress');
+      await loadDir(path);
+      renderBrowser();
+      return;
+    }
+
     if (action === 'extract' || action === 'compress') setMode(action);
     else if (isArchiveName(path)) setMode('extract');
     else setMode('compress');
-
-    setSource('server');
 
     // 定位到该文件所在目录，方便用户看清上下文
     const dir = path.slice(0, path.lastIndexOf('/')) || '/';
@@ -1385,7 +1507,7 @@
     togglePick(entry, true);
     renderBrowser();
 
-    // 让入口一眼可见：滚到操作栏并闪一下开始按钮
+    // 让入口一眼可见：闪一下开始按钮
     $('btn-run').classList.add('pulse');
     setTimeout(() => $('btn-run').classList.remove('pulse'), 2400);
   }

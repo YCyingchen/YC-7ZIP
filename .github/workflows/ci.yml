@@ -54,9 +54,26 @@ jobs:
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o /dev/null .
           done
 
-      - name: 校验 fpk 源文件齐全
+      - name: 校验版本号与 fpk 源文件
         run: |
           set -eu
+          sh deploy/version.sh check
+
+          # manifest 里的版本必须和 VERSION 换算结果一致，否则装出来的应用版本对不上
+          v=$(sh deploy/version.sh show)
+          want=$(sh deploy/version.sh fpk)
+          m=$(grep -E '^version' deploy/fpk/manifest | awk -F'=' '{gsub(/ /,"",$2); print $2}')
+          if [ "$want" != "$m" ]; then
+            echo "deploy/fpk/manifest($m) 应为 $want（由 VERSION $v 换算）" >&2
+            exit 1
+          fi
+
+          # compose 里的镜像标签也要跟着版本走
+          if ! grep -q "ycyingchen/yc-7zip:$v" deploy/fpk/app/docker/docker-compose.yaml; then
+            echo "deploy/fpk/app/docker/docker-compose.yaml 的镜像标签不是 $v" >&2
+            exit 1
+          fi
+
           base=deploy/fpk
           for f in manifest ICON.PNG ICON_256.PNG \
                    app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png \
@@ -67,4 +84,4 @@ jobs:
               exit 1
             fi
           done
-          echo "fpk 源文件齐全"
+          echo "版本号 $v，fpk 源文件齐全"

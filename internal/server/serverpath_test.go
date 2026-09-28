@@ -506,6 +506,68 @@ func TestResolveServerSourcesRelativePaths(t *testing.T) {
 	}
 }
 
+// TestAllowRootFilesystemRoot covers the case the fnOS package ships with: "/"
+// in the allow list must permit every absolute path, not reject them all.
+// Joining the root with a separator yields "//", which no real path starts
+// with, so the naive prefix check turned "allow everything" into "allow
+// nothing".
+func TestAllowRootFilesystemRoot(t *testing.T) {
+	h := newHarness(t, Config{AllowRoots: []string{"/"}})
+
+	for _, p := range []string{
+		"/vol1/1000/下载/a.zip",
+		"/etc/hosts",
+		"/tmp",
+		"/a/b/c/d/e",
+	} {
+		if err := h.srv.checkAllowed(p); err != nil {
+			t.Errorf("checkAllowed(%q) = %v, want nil", p, err)
+		}
+	}
+
+	// Browsing the root itself must work and be labelled.
+	res, body := h.json("GET", "/api/browse", nil)
+	res.Body.Close()
+	roots, _ := body["roots"].([]any)
+	if len(roots) != 1 {
+		t.Fatalf("expected 1 root, got %v", roots)
+	}
+	first, _ := roots[0].(map[string]any)
+	if first["path"] != "/" {
+		t.Fatalf("root path = %v, want /", first["path"])
+	}
+	if _, err := h.srv.validateServerPath("/", true); err != nil {
+		t.Fatalf("the root itself must be usable: %v", err)
+	}
+}
+
+// TestAllowRootsMixed checks that adding "/" alongside concrete volumes keeps
+// the volumes as convenient shortcuts.
+func TestAllowRootsMixed(t *testing.T) {
+	shared := t.TempDir()
+	h := newHarness(t, Config{AllowRoots: []string{shared, "/", shared}})
+
+	res, body := h.json("GET", "/api/browse", nil)
+	res.Body.Close()
+	roots, _ := body["roots"].([]any)
+	// shared, "/" — the duplicate is dropped
+	if len(roots) != 2 {
+		t.Fatalf("expected 2 roots (deduplicated), got %v", roots)
+	}
+	paths := make([]string, 0, len(roots))
+	for _, r := range roots {
+		m, _ := r.(map[string]any)
+		paths = append(paths, m["path"].(string))
+	}
+	if paths[0] != shared || paths[1] != "/" {
+		t.Fatalf("unexpected root order/content: %v", paths)
+	}
+	// A directory that does not exist is dropped rather than shown broken.
+	if err := h.srv.checkAllowed("/nonexistent-but-absolute"); err != nil {
+		t.Errorf("with / allowed, any absolute path is permitted: %v", err)
+	}
+}
+
 // TestDownloadModeStillWorks guards against the server-side path quietly
 // breaking the original upload-to-download flow.
 func TestDownloadModeStillWorks(t *testing.T) {

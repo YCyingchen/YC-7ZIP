@@ -267,12 +267,8 @@ func (e *Engine) run(ctx context.Context, dir string, onProgress ProgressFunc, a
 // act on; a line that is nothing but a label becomes empty and is dropped.
 var diagLabelRe = regexp.MustCompile(`(?i)^\s*(system\s+error|command\s+line\s+error|error|warning)\s*:\s*`)
 
-// summarizeDiag picks the most informative line out of 7-Zip's stderr.
-//
-// Taking the literal first line is not good enough: 7-Zip frequently leads with
-// a bare "Error:" and puts the real message on the next line, which would leave
-// the user staring at a message that says nothing.
-func summarizeDiag(diag string) string {
+// diagLines cleans 7-Zip's stderr into the lines worth showing.
+func diagLines(diag string) []string {
 	var lines []string
 	for _, raw := range strings.Split(diag, "\n") {
 		line := strings.TrimSpace(diagLabelRe.ReplaceAllString(strings.TrimSpace(raw), ""))
@@ -281,6 +277,16 @@ func summarizeDiag(diag string) string {
 		}
 		lines = append(lines, line)
 	}
+	return lines
+}
+
+// summarizeDiag picks the most informative single line out of 7-Zip's stderr.
+//
+// Taking the literal first line is not good enough: 7-Zip frequently leads with
+// a bare "Error:" and puts the real message on the next line, which would leave
+// the user staring at a message that says nothing.
+func summarizeDiag(diag string) string {
+	lines := diagLines(diag)
 	if len(lines) == 0 {
 		return ""
 	}
@@ -288,6 +294,16 @@ func summarizeDiag(diag string) string {
 		return lines[0]
 	}
 	return lines[0] + "（" + lines[len(lines)-1] + "）"
+}
+
+// detailDiag keeps every meaningful line, so the UI can show the whole thing
+// and the user can copy it into a bug report instead of guessing.
+func detailDiag(diag string) string {
+	lines := diagLines(diag)
+	if len(lines) > 12 {
+		lines = append(lines[:12], fmt.Sprintf("…（还有 %d 行）", len(lines)-12))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // classify maps 7-Zip's exit codes and messages onto the engine's sentinel
@@ -305,13 +321,12 @@ func wrapExitError(err error, diag string) error {
 	case strings.Contains(lower, "is not supported archive"),
 		strings.Contains(lower, "cannot open the file as"),
 		strings.Contains(lower, "unsupported method"):
-		return fmt.Errorf("无法识别的存档格式或使用了不支持的算法：%s", summarizeDiag(diag))
+		return fmt.Errorf("无法识别的存档格式或使用了不支持的算法：\n%s", detailDiag(diag))
 	}
-	msg := summarizeDiag(diag)
-	if msg == "" {
-		msg = err.Error()
+	if detail := detailDiag(diag); detail != "" {
+		return fmt.Errorf("7-Zip 执行失败：\n%s", detail)
 	}
-	return fmt.Errorf("7-Zip 执行失败：%s", msg)
+	return fmt.Errorf("7-Zip 执行失败：%s", err.Error())
 }
 
 // copyFileSize returns the size of path, or 0 when unavailable.

@@ -299,7 +299,12 @@ func serveUnixSocket(srv *http.Server, path string, logger *slog.Logger, errCh c
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(path, 0o666); err != nil {
+	// 0600 而不是 0666：这个 socket 后面是一个以 root 运行、放开全部路径的程序，
+	// 谁连上就等于借到它的文件读写能力。飞牛的应用网关（trim_http_cgi 与 nginx）
+	// 本身以 root 运行，所以只留给 owner 不影响网关，却挡掉了同机其他账号的直连。
+	// 0666 是容器形态留下的宽度——那时它能碰到的只有挂载进来的卷，换成原生之后
+	// 这个宽度就成了本地提权。
+	if err := os.Chmod(path, 0o600); err != nil {
 		logger.Warn("无法修改 socket 权限", "path", path, "error", err)
 	}
 	go func() {

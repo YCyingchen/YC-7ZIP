@@ -1,0 +1,14 @@
+appname               = yc7zip
+version               = 1.0.0
+display_name          = YC-7ZIP
+desc                  = <p>在 NAS 本机直接读写文件的压缩与解压工具，支持 7z / ZIP / RAR / TAR / GZ / XZ / ISO 等格式，并支持分卷压缩与分卷解压（飞牛原生压缩没有分卷）。</p>
+platform              = all
+arch                  = all
+source                = thirdparty
+maintainer            = YCyingchen
+distributor           = YCyingchen
+desktop_uidir         = ui
+desktop_applaunchname = yc7zip.Application
+service_port          = 8090
+ctl_stop              = true
+checkport             = true

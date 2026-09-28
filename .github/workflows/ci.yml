@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: 准备 7-Zip
+        run: |
+          set -eux
+          curl -fsSL -o /tmp/7z.tar.xz https://www.7-zip.org/a/7z2501-linux-x64.tar.xz
+          mkdir -p /opt/7z
+          tar -xJf /tmp/7z.tar.xz -C /opt/7z 7zz
+          chmod +x /opt/7z/7zz
+          /opt/7z/7zz i | head -3
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^vendor/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化："
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go test
+        env:
+          YC7ZIP_7Z: /opt/7z/7zz
+        run: go test ./... -count=1 -v
+
+      - name: 交叉编译检查
+        run: |
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o /dev/null .
+          done
+
+      - name: 校验 fpk 源文件齐全
+        run: |
+          set -eu
+          base=deploy/fpk
+          for f in manifest ICON.PNG ICON_256.PNG \
+                   app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png \
+                   app/docker/docker-compose.yaml \
+                   cmd/main config/privilege config/resource; do
+            if [ ! -e "$base/$f" ]; then
+              echo "缺少 fpk 必需文件：$base/$f"
+              exit 1
+            fi
+          done
+          echo "fpk 源文件齐全"

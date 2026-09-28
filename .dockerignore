@@ -1,0 +1,5 @@
+# 只把运行镜像真正需要的东西送进构建上下文
+*
+!Dockerfile
+!dist/*/yc7zip
+!dist/*/7zz

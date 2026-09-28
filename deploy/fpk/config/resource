@@ -1,0 +1,20 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "yc7zip",
+        "path": "docker"
+      }
+    ]
+  },
+  "data-share": {
+    "shares": [
+      {
+        "name": "yc7zip"
+      },
+      {
+        "name": "yc7zip/data"
+      }
+    ]
+  }
+}

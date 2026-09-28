@@ -1,0 +1,23 @@
+# Local secrets & scratch — never commit
+.env.local
+.env
+*.pem
+*.key
+
+# Build output
+dist/
+build/
+*.exe
+*.fpk
+*.tar.gz
+*.zip
+
+# Go
+/vendor/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log

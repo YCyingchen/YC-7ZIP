@@ -1,0 +1,25 @@
+services:
+  yc7zip:
+    container_name: yc7zip
+    image: ycyingchen/yc-7zip:1.0.0
+    ports:
+      - "${wizard_app_port}:8080"
+    volumes:
+      # 应用目录：unix socket 必须落在这里，飞牛的应用网关才能连上
+      - "${TRIM_APPDEST}:/trim"
+      # NAS 上的存储卷：直接读写，这也是"不用上传"的前提
+      - "/vol1:/vol1"
+      - "/vol2:/vol2"
+      - "/vol3:/vol3"
+      - "/vol4:/vol4"
+      - "/vol5:/vol5"
+      # 任务工作区（上传模式与临时文件）
+      - "/var/apps/yc7zip/shares/yc7zip/data:/data"
+    environment:
+      - YC7ZIP_SOCKET=/trim/app.sock
+      - YC7ZIP_BASE_PATH=/app/yc7zip
+      - YC7ZIP_DATA=/data
+      - YC7ZIP_ALLOW_ROOTS=/vol1,/vol2,/vol3,/vol4,/vol5
+      # 需要在局域网之外访问时，把下面这行取消注释并改成自己的账号密码
+      # - YC7ZIP_AUTH=admin:change-me
+    restart: always

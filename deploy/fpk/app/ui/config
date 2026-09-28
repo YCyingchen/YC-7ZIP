@@ -1,0 +1,40 @@
+{
+    ".url": {
+        "yc7zip.Application": {
+            "title": "YC-7ZIP",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "gatewayPrefix": "/app/yc7zip",
+            "gatewaySocket": "app.sock",
+            "url": "/app/yc7zip/",
+            "port": "",
+            "allUsers": true,
+            "fileTypes": [],
+            "noDisplay": false,
+            "control": {
+                "accessPerm": "editable"
+            }
+        },
+        "yc7zip.OpenWith": {
+            "title": "YC-7ZIP 压缩解压",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "gatewayPrefix": "/app/yc7zip",
+            "gatewaySocket": "app.sock",
+            "url": "/app/yc7zip/",
+            "port": "",
+            "allUsers": true,
+            "fileTypes": [
+                "7z", "zip", "rar", "tar", "gz", "tgz", "bz2", "xz", "zst", "zstd",
+                "iso", "cab", "wim", "cpio", "001", "002", "r00", "z01",
+                "lzma", "arj", "lzh", "deb", "rpm"
+            ],
+            "noDisplay": true,
+            "control": {
+                "accessPerm": "editable"
+            }
+        }
+    }
+}

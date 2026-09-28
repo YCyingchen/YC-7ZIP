@@ -1,0 +1,12 @@
+# 统一按 LF 存储。CRLF 会破坏 shell 脚本的 shebang 与变量赋值，
+# 也会让 fpk 里的 cmd/* 在 Linux 上无法执行。
+* text=auto eol=lf
+
+*.png   binary
+*.PNG   binary
+*.jpg   binary
+*.ico   binary
+*.exe   binary
+*.fpk   binary
+*.tar.gz binary
+*.zip   binary

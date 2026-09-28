@@ -60,6 +60,16 @@ type UpdateStatus struct {
 	DownloadURL string `json:"download_url,omitempty"`
 	AssetName   string `json:"asset_name,omitempty"`
 
+	// Source 说明这次结果来自哪条渠道，SourceURL 是那一条的具体地址。
+	// 配了多条源时界面必须能说清"是谁答的"，否则用户没法判断该信哪条。
+	Source    string `json:"source,omitempty"`
+	SourceURL string `json:"source_url,omitempty"`
+	// Sources 是本次逐条源的检查结果。失败的那几条也要报出来：只说"检查失败"
+	// 会让人以为所有渠道都断了，而实际往往只是其中一条连不上。
+	Sources []SourceOutcome `json:"sources,omitempty"`
+	// SourceOptions 是配置好的渠道清单，界面用它渲染选择器。
+	SourceOptions []SourceOption `json:"source_options,omitempty"`
+
 	// CanSelfUpdate 为 false 时 Reason 说明为什么，以及该怎么做。
 	CanSelfUpdate bool   `json:"can_self_update"`
 	Reason        string `json:"reason,omitempty"`
@@ -68,15 +78,36 @@ type UpdateStatus struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// SourceOutcome 是一条更新源本次检查的结果。
+type SourceOutcome struct {
+	Kind    string `json:"kind"`
+	URL     string `json:"url,omitempty"`
+	OK      bool   `json:"ok"`
+	Version string `json:"version,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// SourceOption 是一条可选的更新渠道。
+type SourceOption struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url,omitempty"`
+}
+
+// stagedAsset 是自更新要下载的东西：包地址、校验方式、摘要。
+type stagedAsset struct {
+	url         string
+	checksumURL string
+	sha256      string
+}
+
 // updateState 缓存最近一次检查结果。
 type updateState struct {
 	mu        sync.Mutex
 	status    UpdateStatus
 	checkedAt time.Time
-	// assetURL / checksumURL 只在锁内读写：以前 checksumUA 写在锁外，
-	// 而且跨次检查不重置，会出现"用上一个版本的校验文件"这种怪事。
-	assetURL    string
-	checksumURL string
+	// asset 只在锁内读写：以前 checksumURL 写在锁外，而且跨次检查不重置，
+	// 会出现"用上一个版本的校验文件"这种怪事。
+	asset stagedAsset
 }
 
 // applyMu 串行化安装。两个并发请求共用同一个暂存文件名会互相踩，
@@ -143,6 +174,13 @@ func (s *Server) fillDerived(status *UpdateStatus) {
 	status.Method = deploymentMethod()
 	status.Reason = selfUpdateReason()
 	status.CanSelfUpdate = status.Reason == ""
+
+	// 渠道清单每次都现算：它来自启动参数，不是某次检查的产物。
+	// 缓存的 status 里带上它，界面就不必为了渲染选择器再取一次。
+	status.SourceOptions = nil
+	for _, src := range s.sources {
+		status.SourceOptions = append(status.SourceOptions, SourceOption{Kind: src.kind, URL: src.displayURL()})
+	}
 }
 
 // handleUpdateStatus 返回缓存的更新状态，不触网，界面可以随时调。
@@ -174,43 +212,189 @@ type releaseInfo struct {
 	} `json:"assets"`
 }
 
-// handleUpdateCheck 主动查询最新版本。
-func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
-	defer cancel()
+// defaultUpdateSources 是没显式配置时的渠道顺序。
+//
+// 自建源放在前面：它是我们自己发布的那份产物（飞牛 NAS 上的 lucky 文件服务），
+// 在受限网络里比 api.github.com 可靠得多。GitHub 留在后面兜底——仓库被封、
+// 自建源没同步、或者用户就想从官方渠道拿，都还有一条路。多源是为了可用性，
+// 不是放宽校验：每条路的包都要过 SHA256。
+var defaultUpdateSources = []string{"https://yc7zip.202693.xyz/", "github"}
 
-	status, err := s.checkForUpdate(ctx)
-	if err != nil {
-		status.Error = err.Error()
-		// 网络不通不算服务端错误，交给界面提示即可
-		writeJSON(w, http.StatusOK, status)
-		return
-	}
-	writeJSON(w, http.StatusOK, status)
+const (
+	sourceSelf   = "self"
+	sourceGitHub = "github"
+	// selfManifestName 是自建源目录里的清单文件名，由发布脚本写入。
+	selfManifestName = "update.json"
+	// selfChecksumName 是自建源目录里的校验文件，清单里没写摘要时回退到它。
+	selfChecksumName = "SHA256SUMS.txt"
+)
+
+// updateSource 是一条更新渠道。
+//
+// 两种渠道的产物形态本来就不同：自建源是一个静态目录（读 update.json），
+// GitHub 是 Releases API。所以按渠道分别取值，而不是硬凑一个中间格式——
+// 后者要维护一层转换，还会把 GitHub 的 tag / prerelease 语义压平丢掉。
+type updateSource struct {
+	kind string
+	base string // self：目录基址（末尾无斜杠）；github：可选的 owner/repo 覆盖
 }
 
-// checkForUpdate 拉取发布列表并与当前版本比较。
+func (u updateSource) displayURL() string {
+	if u.kind == sourceGitHub {
+		if u.base != "" {
+			return "https://github.com/" + u.base
+		}
+		return ""
+	}
+	return u.base
+}
+
+// label 是拼错误文案时用的渠道名。界面上的渠道名由前端按语言渲染，
+// 但错误串是服务端拼的，这里只用中文。
+func (u updateSource) label() string {
+	if u.kind == sourceGitHub {
+		return "GitHub"
+	}
+	return "自建源（" + u.base + "）"
+}
+
+// parseUpdateSources 把 -update-sources 的取值解析成渠道列表，顺序即尝试顺序。
 //
-// 版本号是 zip<YYMM>.<NNN>，位数固定且补零，所以字符串比较就是版本比较——
-// 不需要解析，也就不会在解析上出错。
-func (s *Server) checkForUpdate(ctx context.Context) (UpdateStatus, error) {
-	repoPath := repoAPI(s.cfg.RepoURL)
-	status := UpdateStatus{}
-	s.fillDerived(&status)
-	if repoPath == "" {
-		return status, fmt.Errorf("没有配置仓库地址，无法检查更新")
+// 每项要么是 github / github:owner/repo，要么是一个自建源基址。
+// 认不出的项直接报错而不是跳过：静默忽略会让"换了源却没生效"变成一件
+// 只能靠翻日志才发现的事。
+func parseUpdateSources(items []string) ([]updateSource, error) {
+	var out []updateSource
+	for _, raw := range items {
+		item := strings.TrimSpace(raw)
+		if item == "" {
+			continue
+		}
+		switch {
+		case item == sourceGitHub:
+			out = append(out, updateSource{kind: sourceGitHub})
+		case strings.HasPrefix(item, sourceGitHub+":"):
+			repo := strings.Trim(strings.TrimSpace(strings.TrimPrefix(item, sourceGitHub+":")), "/")
+			if !strings.Contains(repo, "/") {
+				return nil, fmt.Errorf("GitHub 源要写成 github:owner/repo，收到 %q", item)
+			}
+			out = append(out, updateSource{kind: sourceGitHub, base: repo})
+		case strings.Contains(item, "://"):
+			base := strings.TrimSuffix(item, "/")
+			parsed, err := url.Parse(base)
+			if err != nil || parsed.Host == "" {
+				return nil, fmt.Errorf("自建源地址无效：%q", item)
+			}
+			// 只认 http(s)：别的协议到 fetch 那一步才会以一句不知所云的
+			// 传输错误失败，不如在配置阶段就说清楚。
+			if parsed.Scheme != "http" && parsed.Scheme != "https" {
+				return nil, fmt.Errorf("自建源只支持 http(s) 地址：%q", item)
+			}
+			out = append(out, updateSource{kind: sourceSelf, base: base})
+		default:
+			return nil, fmt.Errorf(
+				"无法识别的更新源 %q：应填 github、github:owner/repo，或一个 http(s) 目录地址", item)
+		}
+	}
+	return out, nil
+}
+
+// updateManifest 是自建源目录里的 update.json，由发布脚本写入。
+//
+// 之所以要这个文件而不是让客户端去拼：VERSION + CHANGELOG.md + 列举目录
+// 三样凑出来的信息既不够（拿不到包摘要）也不稳（文件名规则散在客户端里，
+// 改一次命名就要跟着升级解析）。一个文件把该说的都说全。
+type updateManifest struct {
+	Version string        `json:"version"`
+	Channel string        `json:"channel"`
+	Date    string        `json:"date"`
+	Notes   string        `json:"notes"`
+	Assets  []updateAsset `json:"assets"`
+}
+
+// updateAsset 是自建源里的一个产物。
+type updateAsset struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size,omitempty"`
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+// checkOne 按渠道取一次检查结果。
+func (s *Server) checkOne(ctx context.Context, src updateSource) (checkedSource, error) {
+	if src.kind == sourceGitHub {
+		return s.checkGitHub(ctx, src)
+	}
+	return s.checkSelfHosted(ctx, src)
+}
+
+// checkSelfHosted 读自建源目录里的 update.json。
+func (s *Server) checkSelfHosted(ctx context.Context, src updateSource) (checkedSource, error) {
+	var out checkedSource
+	endpoint := src.base + "/" + selfManifestName
+
+	body, err := s.fetch(ctx, endpoint, "application/json")
+	if err != nil {
+		return out, err
+	}
+	defer body.Close()
+
+	var manifest updateManifest
+	if err := json.NewDecoder(io.LimitReader(body, 4<<20)).Decode(&manifest); err != nil {
+		return out, fmt.Errorf("解析 %s 失败：%w", endpoint, err)
 	}
 
-	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", repoPath)
+	version := strings.TrimSpace(manifest.Version)
+	if !isVersionTag(version) {
+		return out, fmt.Errorf("自建源报出的版本 %q 不是本项目的版本号格式", version)
+	}
+	// 通道不符不算故障，只是"这条源上没有我要的版本"。
+	if manifest.Channel != "" && s.cfg.Channel != "test" && manifest.Channel != s.cfg.Channel {
+		return out, fmt.Errorf("自建源上只有「%s」通道的 %s", manifest.Channel, version)
+	}
+
+	want := fmt.Sprintf("yc-7zip-linux-%s.tar.gz", runtime.GOARCH)
+	for _, asset := range manifest.Assets {
+		if asset.Name != want {
+			continue
+		}
+		out.status.Latest = version
+		out.status.HasUpdate = version > s.cfg.Version
+		out.status.Notes = manifest.Notes
+		out.status.PublishedAt = manifest.Date
+		out.status.AssetName = asset.Name
+		out.status.DownloadURL = src.base + "/" + asset.Name
+		out.asset = stagedAsset{url: out.status.DownloadURL, sha256: asset.SHA256}
+		if asset.SHA256 == "" {
+			// 老清单没有摘要时的退路，和 GitHub 那条一样走 SHA256SUMS.txt
+			out.asset.checksumURL = src.base + "/" + selfChecksumName
+		}
+		return out, nil
+	}
+	return out, fmt.Errorf("自建源上没有 %s 架构的包（%s）", runtime.GOARCH, want)
+}
+
+// checkGitHub 走 Releases API。
+func (s *Server) checkGitHub(ctx context.Context, src updateSource) (checkedSource, error) {
+	var out checkedSource
+
+	repoPath := src.base
+	if repoPath == "" {
+		repoPath = repoAPI(s.cfg.RepoURL)
+	}
+	if repoPath == "" {
+		return out, fmt.Errorf("没有配置仓库地址，无法从 GitHub 检查更新")
+	}
+
+	endpoint := fmt.Sprintf("%s/repos/%s/releases?per_page=20", s.githubAPI, repoPath)
 	body, err := s.fetch(ctx, endpoint, "application/vnd.github+json")
 	if err != nil {
-		return status, err
+		return out, err
 	}
 	defer body.Close()
 
 	var releases []releaseInfo
 	if err := json.NewDecoder(io.LimitReader(body, 4<<20)).Decode(&releases); err != nil {
-		return status, fmt.Errorf("解析发布列表失败：%w", err)
+		return out, fmt.Errorf("解析发布列表失败：%w", err)
 	}
 
 	channel := s.cfg.Channel
@@ -233,45 +417,147 @@ func (s *Server) checkForUpdate(ctx context.Context) (UpdateStatus, error) {
 		}
 	}
 
-	status.Latest = bestTag
 	if bestTag == "" {
-		s.storeCheck(&status, "", "")
-		return status, fmt.Errorf("没有找到适用于「%s」通道的发布", channel)
+		return out, fmt.Errorf("没有找到适用于「%s」通道的发布", channel)
 	}
-	status.HasUpdate = bestTag > s.cfg.Version
-	status.Notes = best.Body
-	status.PublishedAt = best.PublishedAt
+
+	out.status.Latest = bestTag
+	out.status.HasUpdate = bestTag > s.cfg.Version
+	out.status.Notes = best.Body
+	out.status.PublishedAt = best.PublishedAt
 
 	// 找当前架构的包与校验文件
 	want := fmt.Sprintf("yc-7zip-%s-linux-%s.tar.gz", bestTag, runtime.GOARCH)
-	checksumURL := ""
 	for _, asset := range best.Assets {
 		switch asset.Name {
 		case want:
-			status.AssetName = asset.Name
-			status.DownloadURL = asset.BrowserDownloadURL
+			out.status.AssetName = asset.Name
+			out.status.DownloadURL = asset.BrowserDownloadURL
 		case "SHA256SUMS.txt":
-			checksumURL = asset.BrowserDownloadURL
+			out.asset.checksumURL = asset.BrowserDownloadURL
 		}
 	}
-	if status.DownloadURL == "" {
-		status.HasUpdate = false
-		s.storeCheck(&status, "", "")
-		return status, fmt.Errorf("该发布里没有 %s 架构的包", runtime.GOARCH)
+	if out.status.DownloadURL == "" {
+		return out, fmt.Errorf("该发布里没有 %s 架构的包", runtime.GOARCH)
+	}
+	out.asset.url = out.status.DownloadURL
+	return out, nil
+}
+
+// checkedSource 是一条源给出的检查结果：给界面看的 status，加上自更新要用的地址。
+type checkedSource struct {
+	status UpdateStatus
+	asset  stagedAsset
+}
+
+// handleUpdateCheck 主动查询最新版本。
+//
+// source 查询参数可以把这次检查限定在某一条渠道上（self / github），
+// 界面上的选择器就用它。留空或 auto 表示按配置顺序问所有源。
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+
+	status, err := s.checkForUpdate(ctx, strings.TrimSpace(r.URL.Query().Get("source")))
+	if err != nil {
+		status.Error = err.Error()
+		// 网络不通不算服务端错误，交给界面提示即可
+		writeJSON(w, http.StatusOK, status)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+// checkForUpdate 问每一条源，取其中最新的那个版本。
+//
+// 并发问而不是串行：自建源通常秒回，api.github.com 在受限网络里要等几十秒
+// 才超时，串行等于让最慢的那条拖住整个结果。多源是为了可用性，
+// 但也不该因此把一次"检查更新"变成一次长等待。
+//
+// 版本号是 zip<YYMM>.<NNN>，位数固定且补零，所以字符串比较就是版本比较——
+// 不需要解析，也就不会在解析上出错。
+func (s *Server) checkForUpdate(ctx context.Context, only string) (UpdateStatus, error) {
+	status := UpdateStatus{}
+	s.fillDerived(&status)
+
+	sources := s.sources
+	if only != "" && only != "auto" {
+		var kept []updateSource
+		for _, src := range sources {
+			if src.kind == only {
+				kept = append(kept, src)
+			}
+		}
+		if len(kept) == 0 {
+			return status, fmt.Errorf("没有名为 %q 的更新源", only)
+		}
+		sources = kept
 	}
 
+	type answer struct {
+		src updateSource
+		got checkedSource
+		err error
+	}
+	answers := make([]answer, len(sources))
+	var wg sync.WaitGroup
+	for i, src := range sources {
+		wg.Add(1)
+		go func(i int, src updateSource) {
+			defer wg.Done()
+			got, err := s.checkOne(ctx, src)
+			answers[i] = answer{src: src, got: got, err: err}
+		}(i, src)
+	}
+	wg.Wait()
+
+	// 逐条记录结果，顺序与配置一致，界面照着渲染即可
+	best := -1
+	var failures []string
+	for i, a := range answers {
+		outcome := SourceOutcome{Kind: a.src.kind, URL: a.src.displayURL()}
+		if a.err != nil {
+			outcome.Error = a.err.Error()
+			failures = append(failures, a.src.label()+"："+a.err.Error())
+		} else {
+			outcome.OK = true
+			outcome.Version = a.got.status.Latest
+			// 多源之间会互相落后：取版本最高的那条，而不是"第一条能答的"。
+			// 否则一条还没同步完的源会把新版盖掉，看起来像"检查不到更新"。
+			if best < 0 || a.got.status.Latest > answers[best].got.status.Latest {
+				best = i
+			}
+		}
+		status.Sources = append(status.Sources, outcome)
+	}
+
+	if best < 0 {
+		err := fmt.Errorf("所有更新源都不可用：%s", strings.Join(failures, "；"))
+		s.storeCheck(&status, stagedAsset{})
+		return status, err
+	}
+
+	winner := answers[best]
+	status.Latest = winner.got.status.Latest
+	status.HasUpdate = winner.got.status.Latest > s.cfg.Version
+	status.Notes = winner.got.status.Notes
+	status.PublishedAt = winner.got.status.PublishedAt
+	status.AssetName = winner.got.status.AssetName
+	status.DownloadURL = winner.got.status.DownloadURL
+	status.Source = winner.src.kind
+	status.SourceURL = winner.src.displayURL()
+
 	// 每次检查都重新记录，不留上一次的地址
-	s.storeCheck(&status, status.DownloadURL, checksumURL)
+	s.storeCheck(&status, winner.got.asset)
 	return status, nil
 }
 
-func (s *Server) storeCheck(status *UpdateStatus, assetURL, checksumURL string) {
+func (s *Server) storeCheck(status *UpdateStatus, asset stagedAsset) {
 	s.updates.mu.Lock()
 	defer s.updates.mu.Unlock()
 	s.updates.status = *status
 	s.updates.checkedAt = time.Now()
-	s.updates.assetURL = assetURL
-	s.updates.checksumURL = checksumURL
+	s.updates.asset = asset
 }
 
 // repoAPI 从仓库地址里取出 owner/name。
@@ -353,12 +639,11 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.updates.mu.Lock()
-	assetURL := s.updates.assetURL
-	checksumURL := s.updates.checksumURL
+	staged := s.updates.asset
 	latest := s.updates.status.Latest
 	s.updates.mu.Unlock()
 
-	if assetURL == "" {
+	if staged.url == "" {
 		writeError(w, http.StatusBadRequest, "还没有检查过更新，请先检查")
 		return
 	}
@@ -370,7 +655,7 @@ func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	result, err := s.installFromURL(ctx, assetURL, checksumURL, latest)
+	result, err := s.installFromURL(ctx, staged, latest)
 	if err != nil {
 		writeEngineError(w, err)
 		return
@@ -439,8 +724,16 @@ func (s *Server) handleUpdateUpload(w http.ResponseWriter, r *http.Request) {
 type installResult map[string]any
 
 // installFromURL 下载发布包并安装。
-func (s *Server) installFromURL(ctx context.Context, assetURL, checksumURL, wantVersion string) (installResult, error) {
-	body, err := s.fetch(ctx, assetURL, "application/octet-stream")
+//
+// 在线更新**必须有校验来源**：这条路上的包是从网上拿的，没有校验就等于把
+// "替换本机可执行文件"这件事交给任何一个能应答那个地址的东西。宁可装不上。
+// 本地更新不走这里——它没有远端摘要可比，改用 ELF 结构 + 版本号约束。
+//
+// 摘要值的可信度取决于它从哪来：GitHub 那条走 TLS，摘要与包来自同一个已认证
+// 来源；自建源若配成明文 http，摘要和包可以一起被改写，校验就只剩"防传输损坏"
+// 的作用。所以自建源应当用 https（启动时会对 http 源告警）。
+func (s *Server) installFromURL(ctx context.Context, staged stagedAsset, wantVersion string) (installResult, error) {
+	body, err := s.fetch(ctx, staged.url, "application/octet-stream")
 	if err != nil {
 		return nil, err
 	}
@@ -462,31 +755,33 @@ func (s *Server) installFromURL(ctx context.Context, assetURL, checksumURL, want
 		return nil, fmt.Errorf("下载失败：%w", err)
 	}
 
-	// 有校验文件就必须校验，宁可装不上也不能装进一个被改过的东西
-	sum := ""
-	if checksumURL != "" {
-		expected, err := s.expectedChecksum(ctx, checksumURL, filepath.Base(assetURL))
+	name := filepath.Base(staged.url)
+	expected := staged.sha256
+	if expected == "" && staged.checksumURL != "" {
+		sum, err := s.expectedChecksum(ctx, staged.checksumURL, name)
 		if err != nil {
 			return nil, err
 		}
-		actual, err := fileSHA256(temp.Name())
-		if err != nil {
-			return nil, err
-		}
-		if !strings.EqualFold(expected, actual) {
-			return nil, fmt.Errorf("SHA256 校验不通过：期望 %s，实际 %s", expected, actual)
-		}
-		sum = actual
+		expected = sum
+	}
+	if expected == "" {
+		return nil, fmt.Errorf("该更新源没有提供 %s 的校验值，拒绝安装", name)
 	}
 
-	result, err := s.installFromFile(temp.Name(), filepath.Base(assetURL), wantVersion)
+	actual, err := fileSHA256(temp.Name())
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(expected, actual) {
+		return nil, fmt.Errorf("SHA256 校验不通过：期望 %s，实际 %s", expected, actual)
+	}
+
+	result, err := s.installFromFile(temp.Name(), name, wantVersion)
 	if err != nil {
 		return nil, err
 	}
 	result["downloaded_bytes"] = written
-	if sum != "" {
-		result["sha256"] = sum
-	}
+	result["sha256"] = actual
 	return result, nil
 }
 

@@ -106,8 +106,19 @@ WebP、AVIF、HEIC、BMP、TIFF、SVG 这类服务端解不了的格式，会重
 
 GitHub 在部分网络下直连不到，所以检查更新用的出站代理可以配：
 `-proxy http://192.168.1.8:7890`，或环境变量 `YC7ZIP_PROXY`。
-检查结果缓存 10 分钟，界面上反复点不会反复打 GitHub。仓库地址默认指向本项目，
-fork 之后用 `-repo` / `YC7ZIP_REPO` 改掉（参数表见下文）。
+面板打开时先显示上一次的结果（不触网），点「检查更新」才真的去问各条渠道。
+仓库地址默认指向本项目，fork 之后用 `-repo` / `YC7ZIP_REPO` 改掉（参数表见下文）。
+
+**检查更新有多条渠道**，默认第一条是自建源（发布目录里的 `update.json`），
+第二条是 GitHub Releases；设置面板里可以只查其中一条。几条渠道会**分别报结果**，
+所以"自建源还没同步"和"GitHub 连不上"是能分辨的，而不是笼统的一句"检查失败"。
+换渠道或调顺序用 `-update-sources`（可重复，也可用 `YC7ZIP_UPDATE_SOURCES`
+逗号分隔）：每项是一个自建源目录地址，或 `github[:owner/repo]`。
+
+在线更新下载的包会先过 SHA256——自建源用 `update.json` 里的摘要，GitHub 用
+`SHA256SUMS.txt`；**拿不到校验值就直接拒绝安装**，因为这一步换的是本机可执行文件。
+自建源应当用 https：明文 http 下摘要与包可能被一起改写，校验就只剩防传输损坏的作用
+（启动时会对 http 源告警）。
 
 **本地更新**是给没有外网的 NAS 准备的：上传一个发布包（`.tar.gz`）或一个裸二进制即可。
 这条路径没有远端的校验文件，所以能校验的只有「它确实是一个能跑起来的新版本」——
@@ -216,13 +227,14 @@ cd yc-7zip-<版本>-linux-amd64
 | `-max-upload` | `4G` | 单任务上传上限，`0` 表示不限 |
 | `-job-ttl` | `2h` | 结果保留时长 |
 | `-repo` | 本项目仓库 | 项目仓库地址；fork 之后改这里，界面上的反馈入口与检查更新都用它 |
+| `-update-sources` | 自建源 + GitHub | 检查更新的渠道与顺序，**可重复**：自建源目录地址，或 `github[:owner/repo]` |
 | `-proxy` | 空 | 检查更新用的出站代理，例如 `http://192.168.1.8:7890` |
 | `-quiet` | 关 | 只输出错误日志 |
 | `-version` | 关 | 打印版本号后退出（在线更新正是用它问新程序是哪个版本） |
 
 也可以用环境变量：`YC7ZIP_ADDR` / `YC7ZIP_SOCKET` / `YC7ZIP_BASE_PATH` / `YC7ZIP_DATA` /
 `YC7ZIP_AUTH` / `YC7ZIP_MAX_UPLOAD` / `YC7ZIP_ALLOW_ROOTS`（逗号分隔）/
-`YC7ZIP_REPO` / `YC7ZIP_PROXY`。
+`YC7ZIP_REPO` / `YC7ZIP_UPDATE_SOURCES`（逗号分隔）/ `YC7ZIP_PROXY`。
 
 `YC7ZIP_7Z` 可以指定 7-Zip 可执行文件的位置；不设的话会依次在自身目录、
 `PATH` 和常见安装位置里找。

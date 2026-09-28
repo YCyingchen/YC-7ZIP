@@ -49,6 +49,10 @@ type Config struct {
 	// Channel is the release channel this build came from: "test" or "stable".
 	// It decides which releases count as an update and which image tag to use.
 	Channel string
+	// UpdateSources 是检查更新时要问的渠道，顺序即尝试顺序。每项要么是一个
+	// 自建源目录地址（读它下面的 update.json），要么是 github（可写成
+	// github:owner/repo）。留空则用 defaultUpdateSources。
+	UpdateSources []string
 	// Proxy is an optional outbound HTTP proxy for reaching GitHub, which is
 	// not directly reachable from every network.
 	Proxy string
@@ -71,6 +75,11 @@ type Server struct {
 
 	// updates caches the last update check.
 	updates *updateState
+	// sources 是解析后的更新渠道，顺序即尝试顺序。
+	sources []updateSource
+	// githubAPI 是 GitHub 那一条的 API 基址。留成字段是为了让测试能把它
+	// 指到 httptest 上，不必为可测性把一个只测试用的开关放进 Config。
+	githubAPI string
 	// restart lets the process exit for a restart after a self-update; set by
 	// the caller so tests can observe it instead of dying.
 	restart func()
@@ -93,10 +102,36 @@ func New(cfg Config, eng *engine.Engine, jobs *job.Manager, webFS fs.FS) *Server
 		mux:        http.NewServeMux(),
 		start:      time.Now(),
 		updates:    &updateState{},
+		githubAPI:  "https://api.github.com",
 		uiSettings: newUIStore(cfg.DataDir),
 	}
+	s.sources = s.resolveSources()
 	s.routes()
 	return s
+}
+
+// resolveSources 解析更新源配置。
+//
+// 配错了只告警并回退到默认渠道，不让服务起不来：更新源是辅助能力，
+// 为一条写错的启动参数拒绝启动，代价远大于收益。但告警必须留着——
+// 否则"换了源却没生效"会变成一件只能靠翻日志才发现的事。
+func (s *Server) resolveSources() []updateSource {
+	parsed, err := parseUpdateSources(s.cfg.UpdateSources)
+	if err != nil {
+		s.log.Warn("更新源配置无法识别，改用默认渠道", "error", err)
+		parsed = nil
+	}
+	if len(parsed) == 0 {
+		fallback, _ := parseUpdateSources(defaultUpdateSources)
+		parsed = fallback
+	}
+	for _, src := range parsed {
+		if src.kind == sourceSelf && !strings.HasPrefix(src.base, "https://") {
+			s.log.Warn("自建更新源不是 https：摘要与包可能一起被改写，校验只剩防传输损坏的作用",
+				"source", src.base)
+		}
+	}
+	return parsed
 }
 
 // SetRestart installs the hook used after a self-update. When unset the

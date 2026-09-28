@@ -27,6 +27,8 @@ services:
       YC7ZIP_AUTH: ${YC7ZIP_AUTH:-}
       # 单个任务的上传上限（仅上传模式用得到）
       YC7ZIP_MAX_UPLOAD: ${YC7ZIP_MAX_UPLOAD:-4G}
+      # 检查更新的渠道与顺序，逗号分隔；留空即默认（先自建源，再 GitHub）
+      YC7ZIP_UPDATE_SOURCES: ${YC7ZIP_UPDATE_SOURCES:-}
 
     volumes:
       # 工作区：上传模式的文件与临时结果，必须可写

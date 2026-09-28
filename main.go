@@ -52,6 +52,33 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
+// sourceList 收集更新渠道：重复的 -update-sources 累加，也接受逗号分隔，
+// 因为容器与飞牛包里用环境变量表达一串值更顺手。
+// 与 stringList 分开是因为后者会把值当路径做 Abs/Clean，URL 不能那么处理。
+type sourceList []string
+
+func (s *sourceList) String() string { return strings.Join(*s, ",") }
+
+func (s *sourceList) Set(v string) error {
+	for _, part := range strings.Split(v, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			*s = append(*s, part)
+		}
+	}
+	return nil
+}
+
+// envSources 读 YC7ZIP_UPDATE_SOURCES（逗号分隔），作为渠道的默认值。
+func envSources() sourceList {
+	var l sourceList
+	if env := os.Getenv("YC7ZIP_UPDATE_SOURCES"); env != "" {
+		if err := l.Set(env); err != nil {
+			fmt.Fprintf(os.Stderr, "YC7ZIP_UPDATE_SOURCES 无效：%v\n", err)
+		}
+	}
+	return l
+}
+
 func main() {
 	os.Exit(run())
 }
@@ -73,8 +100,14 @@ func run() int {
   yc7zip -addr :9090 -data /var/lib/yc7zip
   yc7zip -auth admin:secret -max-upload 20G
   yc7zip -allow-root /vol1/1000/共享 -allow-root /vol5/1000/空间4
+  yc7zip -update-sources https://mirror.example.com/ -update-sources github
 `)
 	}
+
+	// 命令行与环境变量各留一份：命令行一旦给过就整体覆盖，避免两条来源
+	// 悄悄拼在一起，让人分不清"换的源到底生效了没有"。
+	envSourceItems := envSources()
+	var flagSources sourceList
 
 	var (
 		addr       = fs.String("addr", envOr("YC7ZIP_ADDR", ":8080"), "HTTP 监听地址，留空则只监听 unix socket")
@@ -92,6 +125,9 @@ func run() int {
 		allowRoots stringList
 	)
 	fs.Var(&allowRoots, "allow-root", "允许作为压缩源的服务器目录，可重复指定（默认关闭该功能）")
+	fs.Var(&flagSources, "update-sources",
+		"检查更新的渠道，可重复或用逗号分隔：自建源目录地址（读其中的 update.json）或 github[:owner/repo]；"+
+			"默认先自建源再 GitHub")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return 2
@@ -157,20 +193,27 @@ func run() int {
 		logger.Info("已找到 7-Zip", "path", eng.BinPath, "version", eng.Version)
 	}
 
+	// 命令行给过就以命令行为准；两边都没给则交给 server 用默认渠道。
+	updateSources := []string(envSourceItems)
+	if len(flagSources) > 0 {
+		updateSources = flagSources
+	}
+
 	cfg := server.Config{
-		Addr:       *addr,
-		Auth:       *auth,
-		MaxUpload:  maxBytes,
-		JobTTL:     *jobTTL,
-		Version:    version,
-		AllowRoots: allowRoots,
-		BasePath:   *basePath,
-		RepoURL:    *repoURL,
-		Channel:    channel,
-		Proxy:      *proxyURL,
-		DataDir:    root,
-		Changelog:  string(changelogMD),
-		Logger:     logger,
+		Addr:          *addr,
+		Auth:          *auth,
+		MaxUpload:     maxBytes,
+		JobTTL:        *jobTTL,
+		Version:       version,
+		AllowRoots:    allowRoots,
+		BasePath:      *basePath,
+		RepoURL:       *repoURL,
+		Channel:       channel,
+		UpdateSources: updateSources,
+		Proxy:         *proxyURL,
+		DataDir:       root,
+		Changelog:     string(changelogMD),
+		Logger:        logger,
 	}
 	srv := server.New(cfg, eng, jobs, webFS)
 

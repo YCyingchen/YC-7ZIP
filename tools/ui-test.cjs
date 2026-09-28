@@ -310,10 +310,15 @@ async function browse(page, dir) {
     const photoTile = page.locator('#browser-gallery .tile', { hasText: '风景' }).first();
     await photoTile.locator('.tile-zoom').click();
     await page.waitForSelector('#lightbox:not([hidden])', { timeout: 10000 });
-    const lbLoaded = await page.evaluate(() => {
-      const img = document.querySelector('#lightbox-body img');
-      return img ? img.complete && img.naturalWidth > 0 : false;
-    });
+    // 等到图片真的解码出来为止：容器出现不等于 <img> 已经 onload，
+    // 取一次瞬时值会偶发地报"没加载"（图越大越容易撞上）。
+    const lbLoaded = await page.waitForFunction(
+      () => {
+        const img = document.querySelector('#lightbox-body img');
+        return !!(img && img.complete && img.naturalWidth > 0);
+      },
+      { timeout: 15000 }
+    ).then(() => true).catch(() => false);
     check('大图查看能加载原图', lbLoaded);
     check('大图页显示文件名', (await page.textContent('#lightbox-name')).includes('风景'));
     await page.screenshot({ path: path.join(OUT, '10-大图查看.png'), fullPage: true });

@@ -11,18 +11,24 @@ printf '%d' 把 09 当八进制）。Python 里这些都是显式的。
     python tools/dev.py nas-test        # 把二进制和测试推到 NAS 并在 NAS 上跑
     python tools/dev.py nas-app         # 在 NAS 上构建镜像、推仓库、打 fpk、重装
     python tools/dev.py nas-download    # 把下载页与产物放到 NAS 的下载目录
+    python tools/dev.py release-assets  # 把 NAS 上打的 .fpk 补到 GitHub Release
     python tools/dev.py ui [URL]        # 真实浏览器验收（默认打 NAS 上的应用）
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -242,7 +248,22 @@ def cmd_nas_test(_: argparse.Namespace) -> int:
     say("推送到 NAS")
     client = nas_client()
     try:
-        nas_put(client, DIST / "amd64" / "yc7zip", "/root/yc7zip-test/yc7zip")
+        # 上一轮起的测试实例会占住同名二进制，此时 SFTP 只回一句没头没脑的
+        # "Failure"（内核那边其实是 Text file busy）。先按端口找出来停掉，
+        # 别指望运维能从那一句里猜出原因。
+        nas_run(
+            client,
+            "pid=$(ss -ltnp 2>/dev/null | grep ':8092' | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); "
+            "if [ -n \"$pid\" ]; then echo \"停掉旧测试实例 pid=$pid\"; kill \"$pid\"; sleep 1; fi; "
+            "echo 可以推送",
+        )
+        try:
+            nas_put(client, DIST / "amd64" / "yc7zip", "/root/yc7zip-test/yc7zip")
+        except OSError as exc:
+            raise RuntimeError(
+                "写不进 /root/yc7zip-test/yc7zip —— 多半是它还在跑，占着这个文件。"
+                f"先停掉 :8092 上的测试实例再试。底层报错：{exc}"
+            ) from exc
         for pkg, path in tests.items():
             nas_put(client, path, f"/root/yc7zip-test/{pkg}.test")
 
@@ -363,6 +384,68 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
     return 0
 
 
+def plain_text_release(rel: dict) -> str:
+    """把一条更新日志压成界面能直接显示的纯文本。
+
+    更新对话框里这段是按纯文本渲染的（textContent），留着 ** 和反引号
+    会原样露出来，反而更难读。
+    """
+    lines = [f"{rel['version']} · {rel['date']}".strip(" ·"), ""]
+    for sec in rel["sections"]:
+        if sec["title"]:
+            lines.append(sec["title"])
+        for item in sec["items"]:
+            text = re.sub(r"\*\*(.+?)\*\*", r"\1", item)
+            text = re.sub(r"`(.+?)`", r"\1", text)
+            lines.append(f"· {text}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def write_checksums(dl: Path, names: list[str]) -> dict[str, str]:
+    """给下载目录里的产物写 SHA256SUMS.txt，返回 name -> 摘要。
+
+    格式与 sha256sum 的输出一致（两列、路径带 ./），因为 GitHub Release 上
+    那份就是 sha256sum 打的，两处要能被同一段客户端代码读。
+    """
+    sums: dict[str, str] = {}
+    for name in names:
+        path = dl / name
+        if path.is_file():
+            sums[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    body = "".join(f"{digest}  ./{name}\n" for name, digest in sums.items())
+    (dl / "SHA256SUMS.txt").write_text(body, encoding="utf-8", newline="\n")
+    return sums
+
+
+def write_update_manifest(dl: Path, v: str, channel: str, rel: dict, sums: dict[str, str]) -> None:
+    """写 update.json —— 自建更新源的清单。
+
+    应用的在线检查直接读它：一次请求就把版本、说明、本架构的包和摘要都拿到。
+    没有它就只好靠 VERSION + CHANGELOG + 猜文件名去拼，既拿不到摘要，
+    也经不起文件名规则变动。
+    """
+    assets = [
+        {
+            "name": name,
+            "size": (dl / name).stat().st_size,
+            "sha256": sums.get(name, ""),
+        }
+        for name in ("yc-7zip-linux-amd64.tar.gz", "yc-7zip-linux-arm64.tar.gz", "yc7zip.fpk")
+        if (dl / name).is_file()
+    ]
+    manifest = {
+        "version": v,
+        "channel": channel,
+        "date": rel.get("date", ""),
+        "notes": plain_text_release(rel),
+        "assets": assets,
+    }
+    (dl / "update.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
 def cmd_nas_download(_: argparse.Namespace) -> int:
     """把下载页与产物放到 NAS 的下载目录。"""
     target = "/vol5/1000/空间4/YC-7ZIP"
@@ -421,6 +504,27 @@ def cmd_nas_download(_: argparse.Namespace) -> int:
         finally:
             sftp.close()
 
+        # 清单要等产物齐了再写：fpk 是刚从 NAS 上取回来的，
+        # 早一步生成就会漏掉它的摘要。
+        say("生成更新源清单")
+        rel = next((r for r in releases if r["version"] == v), None)
+        if rel is None:
+            print(f"  ⚠ CHANGELOG 里没有 {v} 的条目，清单会缺日期与更新说明", file=sys.stderr)
+            rel = {"version": v, "date": "", "sections": []}
+        sums = write_checksums(
+            dl,
+            [
+                "yc-7zip-linux-amd64.tar.gz",
+                "yc-7zip-linux-arm64.tar.gz",
+                "yc-7zip-fpk-src.tar.gz",
+                "yc7zip.fpk",
+                "docker-compose.yml",
+                "env.example",
+            ],
+        )
+        write_update_manifest(dl, v, channel, rel, sums)
+        print(f"  update.json / SHA256SUMS.txt（{len(sums)} 个产物）")
+
         say(f"上传到 {target}")
         nas_run(client, f"mkdir -p {target!r}".replace("'", '"'))
         sftp = client.open_sftp()
@@ -433,6 +537,130 @@ def cmd_nas_download(_: argparse.Namespace) -> int:
         nas_run(client, f"ls -la \"/vol5/1000/空间4/YC-7ZIP\"")
     finally:
         client.close()
+    return 0
+
+
+# ------------------------------------------------------------ GitHub Release
+
+
+def github_request(
+    path: str,
+    token: str,
+    method: str = "GET",
+    data: bytes | None = None,
+    ctype: str | None = None,
+    accept: str = "application/vnd.github+json",
+):
+    """调一次 GitHub API，返回解析后的 JSON（无正文时为 None）。"""
+    req = urllib.request.Request("https://api.github.com" + path, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", accept)
+    req.add_header("User-Agent", "yc7zip-release")
+    if ctype:
+        req.add_header("Content-Type", ctype)
+
+    try:
+        with github_opener().open(req, timeout=180) as res:
+            body = res.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"GitHub API {method} {path} 返回 {exc.code}：{detail}") from exc
+    return json.loads(body) if body else None
+
+
+def github_opener():
+    """带上代理的 opener。本机直连 api.github.com 时通时不通，
+    而这条链路一旦静默失败，表现就是"附件没传上去却没人知道"。"""
+    proxy = env_value("GITHUB_PROXY") or env_value("NAS_PROXY")
+    if not proxy:
+        return urllib.request.build_opener()
+    return urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+
+
+def find_release(repo: str, tag: str, token: str):
+    """按标签取 Release；还没有就返回 None。"""
+    try:
+        return github_request(f"/repos/{repo}/releases/tags/{tag}", token)
+    except RuntimeError as exc:
+        if "返回 404" in str(exc):
+            return None
+        raise
+
+
+def wait_for_release_assets(repo: str, tag: str, token: str, timeout_s: int = 900):
+    """等 CI 把 Release 建出来并且附件传完，返回那个 Release。
+
+    判据取"里面已经有 linux-amd64 的包"，而不是"Release 已存在"：打标签后
+    建 Release 与上传附件之间有几秒空档，踩进去会和 action-gh-release 抢同一个
+    release，表现为附件时有时无。
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        release = find_release(repo, tag, token)
+        if release:
+            names = [a["name"] for a in release.get("assets", [])]
+            if any("linux-amd64.tar.gz" in n for n in names):
+                return release
+        if time.monotonic() > deadline:
+            return None
+        print("  等 CI 产出 Release 附件…", flush=True)
+        time.sleep(20)
+
+
+def upload_asset(repo: str, release: dict, path: Path, token: str, name: str | None = None) -> None:
+    """把一个文件传成 Release 附件；同名先删，否则重复发布会 422。"""
+    name = name or path.name
+    for asset in release.get("assets", []):
+        if asset["name"] == name:
+            github_request(f"/repos/{repo}/releases/assets/{asset['id']}", token, method="DELETE")
+            print(f"  已删除同名旧附件 {name}")
+
+    query = urllib.parse.urlencode({"name": name})
+    url = f"https://uploads.github.com/repos/{repo}/releases/{release['id']}/assets?{query}"
+    req = urllib.request.Request(url, data=path.read_bytes(), method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/octet-stream")
+    req.add_header("User-Agent", "yc7zip-release")
+
+    try:
+        with github_opener().open(req, timeout=900) as res:
+            json.loads(res.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"上传 {name} 失败：{exc.code} {detail}") from exc
+    print(f"  {name}  {path.stat().st_size} bytes")
+
+
+def cmd_release_assets(_: argparse.Namespace) -> int:
+    """把只有本地/NAS 才产得出的附件补到 GitHub Release 上。
+
+    CI 能打出两个架构的二进制包、compose 包和 fpk **源码**包，但打不出编译好的
+    .fpk——那要 fnpack，飞牛只在自己的环境里提供。于是 Releases 页面上架的是一份
+    "还得自己装 fnpack 才能变成可安装的包"的源码，而下载页那边却有现成的 .fpk。
+    补这一步，两边才是同一份东西。
+    """
+    token = env_value("GITHUB_TOKEN")
+    repo = env_value("GITHUB_REPO")
+    if not token or not repo:
+        print("缺少 GITHUB_TOKEN / GITHUB_REPO（写在 .env.local）", file=sys.stderr)
+        return 1
+
+    v = version()
+    fpk = DIST / "dl" / "yc7zip.fpk"
+    if not fpk.is_file():
+        print(f"找不到 {fpk}：先跑 nas-app（在 NAS 上打 fpk）或 nas-download", file=sys.stderr)
+        return 1
+
+    say(f"补充 {v} 的 Release 附件")
+    release = wait_for_release_assets(repo, v, token)
+    if release is None:
+        print(f"等不到 {v} 的 Release 附件（CI 可能还在跑，或者失败了）", file=sys.stderr)
+        return 1
+    # 附件名跟同一条 Release 里的其他产物保持一致（带版本号），
+    # 下载页那边仍用不带版本号的稳定名。
+    upload_asset(repo, release, fpk, token, name=f"yc-7zip-{v}.fpk")
+    print(f"  {release['html_url']}")
     return 0
 
 
@@ -553,6 +781,13 @@ def cmd_publish(args: argparse.Namespace) -> int:
         print("下载页更新失败", file=sys.stderr)
         return 1
 
+    # 7. Release 附件：.fpk 只能在 NAS 上打，CI 那份是源码包
+    say("补充 Release 附件")
+    if cmd_release_assets(argparse.Namespace()):
+        # 前面几步都已经生效了，不该因为这一步让整条发布链报失败；
+        # 但补救命令要写清楚，否则 Release 会一直缺这一份。
+        print("  ⚠ 附件没补上；可单独重试：python tools/dev.py release-assets", file=sys.stderr)
+
     say(f"完成：{v}（{label}）")
     print(f"  仓库   https://github.com/YCyingchen/YC-7ZIP")
     print(f"  发布   https://github.com/YCyingchen/YC-7ZIP/releases")
@@ -568,6 +803,7 @@ COMMANDS = {
     "nas-test": cmd_nas_test,
     "nas-app": cmd_nas_app,
     "nas-download": cmd_nas_download,
+    "release-assets": cmd_release_assets,
     "ui": cmd_ui,
     "publish": cmd_publish,
 }

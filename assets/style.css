@@ -1429,6 +1429,19 @@ a.icon-btn { text-decoration: none; }
 .settings-hint { padding: 0 0 10px; font-size: 12px; }
 .settings-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 10px; }
 
+/* 渠道选择器：全局 select 是 width:100%，直接在行内会把按钮挤下去，
+   所以限宽并让标签与下拉框同排。 */
+.update-source {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+.update-source > span { flex: 0 0 auto; }
+.update-source select { flex: 0 1 320px; min-width: 0; padding-top: 7px; padding-bottom: 7px; }
+
 .kv {
   display: flex;
   flex-wrap: wrap;

@@ -70,6 +70,9 @@
       selfUpdateOk: '可以在线更新：下载后会校验 SHA256 并原子替换，旧的会备份为 .bak。',
       confirmUpdate: '确定要下载并替换当前程序吗？完成后服务会自动重启。',
       updateInstalled: '已更新到', restarting: '进程正在重启，稍后刷新页面即可。',
+      updateSourceLabel: '更新渠道', sourceAuto: '自动（全部渠道）',
+      sourceSelf: '自建源', sourceGitHub: 'GitHub',
+      sourceResult: '各渠道本次结果', sourceFailed: '这条不通',
       wallpaperHint: '可以用 NAS 上的图片，也可以直接上传一张。暗化是保证文字可读的关键。',
       wallpaperNone: '未设置壁纸', wallpaperFromNas: '从 NAS 选', wallpaperUpload: '上传图片',
       wallpaperClear: '清除', wallpaperDim: '暗化', wallpaperBlur: '模糊', wallpaperFit: '铺满方式',
@@ -146,6 +149,9 @@
       selfUpdateOk: 'In-place update available: the download is verified with SHA256 and swapped atomically; the old binary is kept as .bak.',
       confirmUpdate: 'Download and replace the running binary? The service restarts afterwards.',
       updateInstalled: 'Updated to', restarting: 'The process is restarting — reload the page in a moment.',
+      updateSourceLabel: 'Source', sourceAuto: 'Automatic (all sources)',
+      sourceSelf: 'Self-hosted', sourceGitHub: 'GitHub',
+      sourceResult: 'Source results', sourceFailed: 'unavailable',
       wallpaperHint: 'Use an image from the NAS or upload one. Dimming is what keeps the text readable.',
       wallpaperNone: 'No wallpaper set', wallpaperFromNas: 'Pick on NAS', wallpaperUpload: 'Upload image',
       wallpaperClear: 'Clear', wallpaperDim: 'Dim', wallpaperBlur: 'Blur', wallpaperFit: 'Scaling',
@@ -408,6 +414,8 @@
     renderResult();
     renderRunButton();
     $('repo-link').title = t('repo');
+    // 设置面板里的更新渠道选择器也是按语言拼的，切语言要跟着重画
+    if (settingsState.update) renderUpdateStatus(settingsState.update);
     if (!state.online) $('offline-banner').hidden = false;
   }
 
@@ -1983,31 +1991,73 @@
     toast(t('wallpaperCleared'), 'success');
   }
 
+  // 渠道名按语言渲染：服务端只给 kind 与地址，文案在前端才有 zh/en 两套。
+  function sourceName(kind, url) {
+    if (kind === 'github') return t('sourceGitHub');
+    if (kind === 'self') return t('sourceSelf') + (url ? ' · ' + url.replace(/^https?:\/\//, '') : '');
+    return kind || '';
+  }
+
+  // 逐条渠道的结果。配了多条渠道就必须能分辨"是谁答的、谁没通"，
+  // 只说一句"检查失败"会让人以为所有渠道都断了。
+  function sourceLines(status) {
+    if (!status.sources || !status.sources.length) return '';
+    return '\n\n' + t('sourceResult') + '\n' + status.sources.map(function (s) {
+      const detail = s.ok ? (s.version || '') : (s.error || t('sourceFailed'));
+      return '· ' + sourceName(s.kind, s.url) + ' — ' + detail;
+    }).join('\n');
+  }
+
+  // 渠道选择器只在渠道清单或语言变化时重建，并保住用户当前的选择，
+  // 否则每次检查之后都会跳回「自动」。
+  function renderSourcePicker(options) {
+    const select = $('update-source');
+    if (!select || !options) return;
+    const wanted = select.value || 'auto';
+    const signature = state.lang + '#' + options.map(function (o) {
+      return o.kind + '|' + (o.url || '');
+    }).join(',');
+    if (signature === select.dataset.signature) return;
+    select.dataset.signature = signature;
+    select.innerHTML = '<option value="auto">' + escapeHtml(t('sourceAuto')) + '</option>' +
+      options.map(function (o) {
+        return '<option value="' + escapeHtml(o.kind) + '">' + escapeHtml(sourceName(o.kind, o.url)) + '</option>';
+      }).join('');
+    select.value = options.some(function (o) { return o.kind === wanted; }) ? wanted : 'auto';
+  }
+
   function renderUpdateStatus(status) {
     const methods = { binary: t('methodBinary'), container: t('methodContainer'), package: t('methodPackage') };
-    $('update-current').innerHTML =
+    let head =
       '<span>' + escapeHtml(t('currentVersion')) + ' <b>' + escapeHtml(status.current || '') + '</b></span>' +
       '<span>' + escapeHtml(t('channelLabel')) + ' <b>' + escapeHtml(status.channel || '') + '</b></span>' +
       '<span>' + escapeHtml(t('deployMethod')) + ' <b>' + escapeHtml(methods[status.method] || status.method || '') + '</b></span>';
+    if (status.source) {
+      head += '<span>' + escapeHtml(t('updateSourceLabel')) + ' <b>' +
+        escapeHtml(sourceName(status.source, status.source_url)) + '</b></span>';
+    }
+    $('update-current').innerHTML = head;
+    renderSourcePicker(status.source_options);
 
     const result = $('update-result');
     const hint = $('update-hint');
     const apply = $('btn-update-apply');
+    const lines = sourceLines(status);
 
     if (status.error) {
       result.hidden = false;
       result.dataset.kind = 'err';
-      result.textContent = status.error;
+      result.textContent = status.error + lines;
     } else if (status.has_update) {
       result.hidden = false;
       result.dataset.kind = 'ok';
       result.textContent = t('newVersionFound') + ' ' + status.latest + '\n' +
         (status.published_at ? status.published_at + '\n' : '') +
-        (status.notes ? '\n' + status.notes.slice(0, 1200) : '');
+        (status.notes ? '\n' + status.notes.slice(0, 1200) : '') + lines;
     } else if (status.latest) {
       result.hidden = false;
       result.dataset.kind = '';
-      result.textContent = t('alreadyLatest', { v: status.current });
+      result.textContent = t('alreadyLatest', { v: status.current }) + lines;
     } else {
       result.hidden = true;
     }
@@ -2022,7 +2072,12 @@
     btn.disabled = true;
     btn.textContent = t('checking');
     try {
-      const status = await api('/api/update/check', { method: 'POST' }, 40000);
+      const picker = $('update-source');
+      const source = picker ? picker.value : 'auto';
+      // 选了具体渠道就只问那一条，省得"我想验证自建源"却还是被 GitHub 的
+      // 慢响应拖着等
+      const query = source && source !== 'auto' ? '?source=' + encodeURIComponent(source) : '';
+      const status = await api('/api/update/check' + query, { method: 'POST' }, 40000);
       settingsState.update = status;
       renderUpdateStatus(status);
     } catch (err) {

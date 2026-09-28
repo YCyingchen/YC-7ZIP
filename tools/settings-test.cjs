@@ -61,7 +61,18 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
     check('渲染出条目', itemCount >= 5, `条目数 ${itemCount}`);
     await page.screenshot({ path: path.join(OUT, '01-设置-更新日志.png'), fullPage: true });
 
-    section('3. 检查更新');
+    section('3. 更新渠道与检查');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#update-source option').length > 0,
+      { timeout: 15000 }
+    );
+    const sources = await page.$$eval('#update-source option', (els) =>
+      els.map((e) => ({ value: e.value, text: e.textContent.trim() })));
+    check('选择器有「自动」', sources.some((o) => o.value === 'auto'), JSON.stringify(sources));
+    check('选择器列出自建源', sources.some((o) => o.value === 'self'), JSON.stringify(sources));
+    check('选择器列出 GitHub', sources.some((o) => o.value === 'github'), JSON.stringify(sources));
+    check('默认走自动', (await page.inputValue('#update-source')) === 'auto');
+
     await page.click('#btn-update-check');
     await page.waitForFunction(
       () => {
@@ -73,9 +84,27 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
     const updateText = await page.textContent('#update-result');
     check('检查有结果反馈', updateText.trim().length > 0, updateText.slice(0, 80));
     const kind = await page.getAttribute('#update-result', 'data-kind');
-    // 还没有打过任何 Release，所以预期是"没找到适用发布"这类提示，不该是崩溃
     check('结果是可读的提示而非异常', !/undefined|NaN|HTTP 5/.test(updateText), updateText.slice(0, 60));
+    // 两条渠道都要点名：只报一句笼统的"检查失败"，用户没法判断该修哪一条
+    check('逐条报告渠道结果', /自建源/.test(updateText) && /GitHub/.test(updateText), updateText.slice(0, 160));
+    check('两条渠道都没塌', !/所有更新源都不可用/.test(updateText), updateText.slice(0, 160));
+    const updateHead = await page.textContent('#update-current');
+    check('标明结果来自哪条渠道', /自建源|GitHub/.test(updateHead), updateHead);
     console.log(`     结果类型=${kind || 'info'}：${updateText.slice(0, 90)}`);
+    await page.screenshot({ path: path.join(OUT, '01b-设置-更新渠道.png'), fullPage: true });
+
+    // 只查一条渠道：既要能强制指定，也要保证选择不会被检查结果重置回「自动」
+    await page.selectOption('#update-source', 'self');
+    await page.click('#btn-update-check');
+    let selfOnly = '';
+    for (let i = 0; i < 20; i++) {
+      selfOnly = await page.textContent('#update-result');
+      if (/自建源/.test(selfOnly) && !/GitHub/.test(selfOnly)) break;
+      await page.waitForTimeout(500);
+    }
+    check('限定单条渠道时只报那一条', /自建源/.test(selfOnly) && !/GitHub/.test(selfOnly), selfOnly.slice(0, 140));
+    check('选择未被检查结果重置', (await page.inputValue('#update-source')) === 'self');
+    await page.selectOption('#update-source', 'auto');
 
     section('4. 壁纸');
     // 先用 API 直接设一张，再回来验证界面渲染（模拟"从 NAS 选"的结果）

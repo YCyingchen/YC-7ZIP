@@ -86,26 +86,34 @@ def parse(markdown: str) -> list[dict]:
 
 
 def render(releases: list[dict], limit: int | None = None) -> str:
+    """每个版本渲染成一个 <details>，只有最新的那个默认展开。
+
+    更新日志通常是来查"这次改了什么"的，全部展开会把页面拉得很长；
+    但最新版恰恰是最常看的一条，默认收起反而多点一次。
+    """
     out: list[str] = []
     chosen = releases[:limit] if limit else releases
 
     for index, rel in enumerate(chosen):
-        open_attr = "" if index == 0 else ""
-        out.append('<article class="release">')
+        open_attr = " open" if index == 0 else ""
+        out.append(f'<details class="release"{open_attr}>')
         out.append(
-            f'  <header class="release-head">'
+            '  <summary class="release-head">'
             f'<span class="release-ver">{html.escape(rel["version"])}</span>'
             f'<span class="release-date">{html.escape(rel["date"])}</span>'
-            f"</header>"
+            '<span class="release-toggle" aria-hidden="true"></span>'
+            "</summary>"
         )
+        out.append('  <div class="release-body">')
         for sec in rel["sections"]:
             if sec["title"]:
-                out.append(f'  <h4 class="release-section">{inline(sec["title"])}</h4>')
-            out.append('  <ul class="release-items">')
+                out.append(f'    <h4 class="release-section">{inline(sec["title"])}</h4>')
+            out.append('    <ul class="release-items">')
             for item in sec["items"]:
-                out.append(f"    <li>{inline(item)}</li>")
-            out.append("  </ul>")
-        out.append("</article>")
+                out.append(f"      <li>{inline(item)}</li>")
+            out.append("    </ul>")
+        out.append("  </div>")
+        out.append("</details>")
 
     if limit and len(releases) > limit:
         rest = len(releases) - limit

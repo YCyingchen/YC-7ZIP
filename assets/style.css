@@ -1478,10 +1478,65 @@ a.icon-btn { text-decoration: none; }
 .field-inline { border-bottom: 0; padding: 8px 0 0; }
 .field-inline > label { margin-bottom: 5px; }
 
+/* 更新日志：清单与每个版本都可折叠。设置面板本来就不高，
+   把两三个版本全铺开会把壁纸那些选项顶到看不见的地方。 */
 .changelog-inline { font-size: 13px; }
-.changelog-inline .release { padding: 10px 0; }
-.changelog-inline .release:first-child { padding-top: 0; }
-.changelog-inline .release-ver { font-size: 13px; }
+.changelog-inline .release { border-bottom: 1px solid var(--line-soft); }
+.changelog-inline .release:last-of-type { border-bottom: 0; }
+
+.changelog-inline .release-head {
+  display: block;
+  position: relative;
+  padding: 10px 34px 10px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.changelog-inline .release-head::-webkit-details-marker { display: none; }
+.changelog-inline .release-head:hover .release-ver { color: var(--accent-dim); }
+
+/* 版本号与日期之间用右外边距，而不是 flex gap：
+   任何布局下都成立，不会粘成 "zip2609.0022026-09-29"。 */
+.changelog-inline .release-ver {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 12px;
+}
+.changelog-inline .release-date {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.changelog-inline .release-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(-45deg);
+  transition: transform .18s;
+}
+.changelog-inline .release-toggle::before {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--ink-faint);
+  border-bottom: 1.6px solid var(--ink-faint);
+}
+.changelog-inline details[open] > .release-head .release-toggle {
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.changelog-inline .release-body { padding: 0 0 12px; }
+.changelog-inline .release-section {
+  margin: 10px 0 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--dim);
+}
+.changelog-inline .release-items { margin: 0; padding-left: 18px; }
+.changelog-inline .release-items li { margin: 5px 0; font-size: 12.5px; line-height: 1.6; }
 
 /* --------------------------------------------------------------- 壁纸层 */
 

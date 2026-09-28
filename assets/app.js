@@ -2087,7 +2087,8 @@
     let shown = 0;
 
     function closeList() { if (inList) { html.push('</ul>'); inList = false; } }
-    function closeRelease() { closeList(); if (open) { html.push('</article>'); open = false; } }
+    // 每个版本是一个 <details>：折叠起来只占一行，查哪版看哪版
+    function closeRelease() { closeList(); if (open) { html.push('</div></details>'); open = false; } }
 
     for (const raw of String(markdown).split('\n')) {
       const line = raw.replace(/\s+$/, '');
@@ -2096,9 +2097,13 @@
         if (shown >= 3) break;
         shown++;
         closeRelease();
-        html.push('<article class="release"><header class="release-head">' +
+        // 最新的那个默认展开：它正是最常看的一条
+        html.push('<details class="release"' + (shown === 1 ? ' open' : '') + '>' +
+          '<summary class="release-head">' +
           '<span class="release-ver">' + esc(ver[1]) + '</span>' +
-          '<span class="release-date">' + esc(ver[2]) + '</span></header>');
+          '<span class="release-date">' + esc(ver[2]) + '</span>' +
+          '<span class="release-toggle"></span></summary>' +
+          '<div class="release-body">');
         open = true;
         continue;
       }

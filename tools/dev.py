@@ -318,15 +318,21 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
         nas_put(client, ROOT / "dist" / "7z-amd64" / "7zz" if (ROOT / "dist" / "7z-amd64" / "7zz").is_file() else fetch_sevenzip("amd64"), "/root/yc7zip-build/dist/amd64/7zz")
 
         say("在 NAS 上构建镜像")
+        # 版本标签永远打且不可变；通道标签由 CHANNEL 决定，
+        # 写死 latest 会让测试版覆盖正式版的分发标签。
+        channel_tag = "latest" if version_tool.read_channel() == "stable" else "test"
         nas_run(
             client,
             "cd /root/yc7zip-build && chmod +x dist/amd64/yc7zip dist/amd64/7zz "
             f"&& DOCKER_BUILDKIT=0 docker build --build-arg TARGETARCH=amd64 "
-            f"-t ycyingchen/yc-7zip:{v} -t ycyingchen/yc-7zip:latest .",
+            f"-t ycyingchen/yc-7zip:{v} -t ycyingchen/yc-7zip:{channel_tag} .",
         )
 
-        say("推送到 Docker Hub（应用中心安装时会拉，必须先有）")
-        nas_run(client, f"docker push ycyingchen/yc-7zip:{v} && docker push ycyingchen/yc-7zip:latest")
+        say(f"推送到 Docker Hub（应用中心安装时会拉，必须先有）[{v} 与 {channel_tag}]")
+        nas_run(
+            client,
+            f"docker push ycyingchen/yc-7zip:{v} && docker push ycyingchen/yc-7zip:{channel_tag}",
+        )
 
         say("打包 fpk")
         nas_run(client, "cd /root/yc7zip-build/fpk && rm -f yc7zip.fpk && fnpack build")

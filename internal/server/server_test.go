@@ -470,6 +470,66 @@ func TestStaticServesIndex(t *testing.T) {
 	}
 }
 
+// TestStaticAssetsAreRevalidated is the regression test for a stale-cache bug
+// that produced a mixed-version page: a fresh index.html against a cached
+// app.js from the previous release. It surfaced as "the list/gallery buttons do
+// nothing" and a filter dropdown rendering a raw i18n key instead of its label.
+//
+// Assets are embedded in the binary, so their URL never changes while their
+// content does. They must not carry a long max-age — they must revalidate.
+func TestStaticAssetsAreRevalidated(t *testing.T) {
+	h := newHarness(t, Config{Version: "zip2609.001"})
+
+	res := h.do("GET", "/assets/app.js", nil, "")
+	_, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("assets/app.js = %d", res.StatusCode)
+	}
+
+	etag := res.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("a static asset must carry an ETag so it can be revalidated")
+	}
+	cacheControl := res.Header.Get("Cache-Control")
+	if !strings.Contains(cacheControl, "no-cache") {
+		t.Fatalf("Cache-Control = %q, want no-cache so the browser revalidates", cacheControl)
+	}
+	if strings.Contains(cacheControl, "max-age=") && !strings.Contains(cacheControl, "max-age=0") {
+		t.Fatalf("Cache-Control = %q must not let a stale asset be reused", cacheControl)
+	}
+
+	// 带上 If-None-Match 应当拿到 304 而不是重新传输
+	req, _ := http.NewRequest("GET", h.server.URL+"/assets/app.js", nil)
+	req.Header.Set("If-None-Match", etag)
+	again, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again.Body.Close()
+	if again.StatusCode != http.StatusNotModified {
+		t.Fatalf("revalidation = %d, want 304", again.StatusCode)
+	}
+
+	// index.html 给资源 URL 打了版本号，升级后旧缓存不会被命中
+	index := h.do("GET", "/", nil, "")
+	raw, _ := io.ReadAll(index.Body)
+	index.Body.Close()
+	if !bytes.Contains(raw, []byte("assets/app.js?v=zip2609.001")) {
+		t.Fatal("index.html should stamp asset URLs with the version to bust old caches")
+	}
+	if !bytes.Contains(raw, []byte("assets/style.css?v=zip2609.001")) {
+		t.Fatal("style.css should be stamped too")
+	}
+
+	// 带着查询串的资源依然要能取到
+	asset := h.do("GET", "/assets/app.js?v=zip2609.001", nil, "")
+	asset.Body.Close()
+	if asset.StatusCode != http.StatusOK {
+		t.Fatalf("stamped asset URL = %d", asset.StatusCode)
+	}
+}
+
 func TestParseVolumeSize(t *testing.T) {
 	ok := map[string]string{"100m": "100m", "2G": "2g", "512k": "512k", "1t": "1t", "256mb": "256m"}
 	for in, want := range ok {

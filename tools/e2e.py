@@ -46,17 +46,23 @@ def section(title: str) -> None:
 
 def request(method: str, path: str, body: bytes | None = None, ctype: str | None = None):
     """返回 (状态码, 解析后的 JSON 或原始字节)。"""
+    status, raw = request_raw(method, path, body, ctype)
+    return status, _maybe_json(raw)
+
+
+def request_raw(
+    method: str, path: str, body: bytes | None = None, ctype: str | None = None
+) -> tuple[int, bytes]:
+    """返回 (状态码, 原始字节)。下载产物必须走这个：二进制经 JSON 解析会被破坏。"""
     url = BASE + path
     req = urllib.request.Request(url, data=body, method=method)
     if ctype:
         req.add_header("Content-Type", ctype)
     try:
         with urllib.request.urlopen(req, timeout=120) as res:
-            raw = res.read()
-            return res.status, _maybe_json(raw)
+            return res.status, res.read()
     except urllib.error.HTTPError as exc:
-        raw = exc.read()
-        return exc.code, _maybe_json(raw)
+        return exc.code, exc.read()
 
 
 def _maybe_json(raw: bytes):
@@ -112,7 +118,7 @@ def wait_job(job_id: str, timeout: float = 180) -> dict:
 
 
 def download(path: str, dest: Path) -> int:
-    status, raw = request("GET", path)
+    status, raw = request_raw("GET", path)
     if status != 200:
         return 0
     dest.write_bytes(raw)

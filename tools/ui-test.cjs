@@ -218,7 +218,119 @@ async function browse(page, dir) {
     check('自动预选了该文件', /1/.test(pickedCount), pickedCount);
     await page.screenshot({ path: path.join(OUT, '08-右键唤起.png'), fullPage: true });
 
-    section('7. 控制台与网络');
+    section('7. 图览模式');
+    // 直接把 ?path 指到媒体目录，省去一层层点
+    await page.goto(`${BASE}/?path=${encodeURIComponent(`${ROOT}/media`)}`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForSelector('#browser-list .browser-row', { timeout: 20000 });
+
+    await page.click('#view-grid');
+    await page.waitForSelector('#browser-gallery .tile', { timeout: 15000 });
+    const tileCount = await page.locator('#browser-gallery .tile').count();
+    check('图览渲染出全部条目', tileCount === 7, `tile 数 ${tileCount}`);
+    check('切到图览后列表已隐藏', await page.isHidden('#browser-list'));
+
+    // 缩略图必须真的加载出来，而不是一堆破图
+    await page.waitForTimeout(1500);
+    const thumbStats = await page.evaluate(() => {
+      const imgs = Array.from(document.querySelectorAll('#browser-gallery .tile img'));
+      return {
+        total: imgs.length,
+        loaded: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
+        byName: imgs.map((i) => ({
+          w: i.naturalWidth,
+          h: i.naturalHeight,
+          alt: i.alt,
+        })),
+      };
+    });
+    check('图片条目都生成了 <img>', thumbStats.total === 5, `img 数 ${thumbStats.total}`);
+    check('缩略图全部加载成功', thumbStats.loaded === thumbStats.total,
+      JSON.stringify(thumbStats.byName));
+
+    // 这一条是 EXIF 方向处理的关键验证：源图是横的（1600x900），
+    // 带 Orientation=6 标签，缩略图必须是竖的，否则图览会一片躺倒。
+    const rotated = thumbStats.byName.find((i) => (i.alt || '').includes('手机竖拍'));
+    check('带 EXIF 旋转的照片缩略图已摆正（竖图）',
+      !!rotated && rotated.h > rotated.w,
+      rotated ? `${rotated.w}x${rotated.h}` : '未找到该图');
+
+    const landscape = thumbStats.byName.find((i) => (i.alt || '').includes('风景'));
+    check('普通横图缩略图仍是横的',
+      !!landscape && landscape.w > landscape.h,
+      landscape ? `${landscape.w}x${landscape.h}` : '未找到该图');
+
+    await page.screenshot({ path: path.join(OUT, '09-图览模式.png'), fullPage: true });
+
+    section('8. 类型筛选与选中');
+    await page.selectOption('#type-filter', 'image');
+    await page.waitForTimeout(400);
+    const imgTiles = await page.locator('#browser-gallery .tile').count();
+    check('筛选「图片」只剩 5 张', imgTiles === 5, `tile 数 ${imgTiles}`);
+
+    await page.selectOption('#type-filter', 'video');
+    await page.waitForTimeout(400);
+    const vidTiles = await page.locator('#browser-gallery .tile').count();
+    check('筛选「视频」只剩 1 个', vidTiles === 1, `tile 数 ${vidTiles}`);
+
+    await page.selectOption('#type-filter', 'all');
+    await page.waitForTimeout(400);
+
+    // 点缩略图应切换选中，而不是进目录或跳走
+    const firstTile = page.locator('#browser-gallery .tile').first();
+    const firstName = await firstTile.locator('.tile-name').textContent();
+    await firstTile.click();
+    await page.waitForTimeout(300);
+    check('点击缩略图即选中', await page.locator('#browser-gallery .tile.is-picked').count() === 1,
+      `选中 ${await page.locator('#browser-gallery .tile.is-picked').count()} 个`);
+    check('选中项进入已选列表', (await page.textContent('#source-count')).includes('1'),
+      await page.textContent('#source-count'));
+
+    // 再点一次取消，避免"选错了还得重来"
+    await firstTile.click();
+    await page.waitForTimeout(300);
+    check('再次点击可取消选中', await page.locator('#browser-gallery .tile.is-picked').count() === 0);
+
+    section('9. 大图查看');
+    const photoTile = page.locator('#browser-gallery .tile', { hasText: '风景' }).first();
+    await photoTile.locator('.tile-zoom').click();
+    await page.waitForSelector('#lightbox:not([hidden])', { timeout: 10000 });
+    const lbLoaded = await page.evaluate(() => {
+      const img = document.querySelector('#lightbox-body img');
+      return img ? img.complete && img.naturalWidth > 0 : false;
+    });
+    check('大图查看能加载原图', lbLoaded);
+    check('大图页显示文件名', (await page.textContent('#lightbox-name')).includes('风景'));
+    await page.screenshot({ path: path.join(OUT, '10-大图查看.png'), fullPage: true });
+
+    // 在大图里直接选中，省得关掉再找
+    await page.click('#lightbox-pick');
+    await page.waitForTimeout(300);
+    check('大图里可直接选中', await page.locator('#browser-gallery .tile.is-picked').count() === 1);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    check('Esc 关闭大图', await page.isHidden('#lightbox'));
+
+    // 损坏的视频不应留下破图，应退回图标
+    await page.selectOption('#type-filter', 'video');
+    await page.waitForTimeout(1200);
+    const videoFallback = await page.evaluate(() => {
+      const tile = document.querySelector('#browser-gallery .tile');
+      if (!tile) return { ok: false, why: 'no tile' };
+      const v = tile.querySelector('video');
+      // 要么视频没挂上（退回图标），要么挂上了但已判定失败；都不能是空白
+      return {
+        ok: true,
+        hasVideo: !!v,
+        hasIcon: !!tile.querySelector('.tile-thumb .fi'),
+        videoBroken: v ? v.error !== null || v.readyState === 0 : false,
+      };
+    });
+    check('损坏视频退回图标而非破图',
+      videoFallback.ok && (videoFallback.hasIcon || videoFallback.videoBroken),
+      JSON.stringify(videoFallback));
+    await page.selectOption('#type-filter', 'all');
+
+    section('10. 控制台与网络');
     check('无 JS 运行时异常', pageErrors.length === 0, pageErrors.join(' | '));
     check('无控制台错误', consoleErrors.length === 0, consoleErrors.join(' | '));
     check('无失败请求', failedRequests.length === 0, failedRequests.join(' | '));

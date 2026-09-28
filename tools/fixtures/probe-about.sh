@@ -1,28 +1,30 @@
 #!/bin/sh
-# 飞牛的「关于」页文字来自哪里？对比已装应用
-echo "=== /vol1/@appmeta/yc7zip ==="
-find /vol1/@appmeta/yc7zip -maxdepth 3 2>/dev/null | head -20
+# 定位飞牛「关于」页的文字来源
+echo "=== /vol1/@appmeta/yc7zip 全部内容 ==="
+find /vol1/@appmeta/yc7zip -maxdepth 3 2>/dev/null
 
 echo
-echo "=== /vol1/@appmeta/xinZip 作对照 ==="
-find /vol1/@appmeta/xinZip -maxdepth 3 2>/dev/null | head -20
-
-echo
-echo "=== appmeta 里带 desc 的文件 ==="
-grep -rl 'desc' /vol1/@appmeta/yc7zip /vol1/@appmeta/xinZip 2>/dev/null | head -10
-
-echo
-echo "=== 谁在提供 About 文本：找含 Docker 与 fnOS 的文件 ==="
-grep -ral 'fnOS' /vol1/@appmeta /var/apps /usr/trim/etc 2>/dev/null | head -10
-
-echo
-echo "=== 我们的 appmeta 里所有文件内容 ==="
-for f in $(find /vol1/@appmeta/yc7zip -maxdepth 3 -type f 2>/dev/null | head -8); do
-  echo "--- $f"
-  head -c 600 "$f"
+echo "=== yc7zip 里每个文件的开头 ==="
+for f in $(find /vol1/@appmeta/yc7zip -maxdepth 3 -type f 2>/dev/null | head -10); do
+  echo "--- $f ($(wc -c < "$f") bytes)"
+  head -c 400 "$f" | cat -v
   echo
 done
 
 echo
-echo "=== 飞牛 appcenter 的数据库里有没有描述字段 ==="
-find /usr/trim /var/lib -maxdepth 4 -name '*.db' -o -maxdepth 4 -name '*.db3' 2>/dev/null | head -10
+echo "=== 对照 xinZip 的 appmeta ==="
+find /vol1/@appmeta/xinZip -maxdepth 3 2>/dev/null
+
+echo
+echo "=== 哪些文件同时含 Docker 和 fnOS ==="
+grep -rl 'fnOS' /vol1/@appmeta /var/apps /vol1/@appconf 2>/dev/null | head -10
+grep -rl 'Docker' /vol1/@appmeta/yc7zip /var/apps/yc7zip 2>/dev/null | head -10
+
+echo
+echo "=== 飞牛的元数据库文件 ==="
+find /usr/trim/var /var/lib/trim -maxdepth 3 \( -name '*.db' -o -name '*.db3' -o -name '*.sqlite*' \) 2>/dev/null | head -10
+
+echo
+echo "=== appcenter 进程与它的数据目录 ==="
+ps aux | grep -i appcent | grep -v grep | head -3
+ls -la /usr/trim/var/ 2>/dev/null | head -20

@@ -126,9 +126,10 @@ GitHub 在部分网络下直连不到，所以检查更新用的出站代理可�
 
 ### 自定义壁纸
 
-可以用 NAS 上已有的图片当壁纸，也可以直接上传一张。暗化（0–90%，默认 45%）
-是保证文字可读的关键，模糊（0–40 px）与铺满方式（铺满裁切 / 完整显示 / 平铺）
-按喜好调。
+上传一张图片当壁纸。暗化（0–90%，默认 45%）是保证文字可读的关键；
+模糊（0–40 px）、铺满方式（铺满裁切 / 完整显示 / 平铺）与**面板透明**
+（0–90%，默认 8%）按喜好调——面板调得越透，壁纸越能透出来，
+而这一步带来的可读性代价正好由「暗化」补回来。
 
 壁纸铺在一个固定在最底层的层上，内容面板照旧是实色的：照片只在留白处透出来，
 文字永远落在实色面板上，不会出现「浅色照片上白字看不清」。暗化的颜色按当前主题算，
@@ -157,19 +158,25 @@ GitHub 在部分网络下直连不到，所以检查更新用的出站代理可�
 
 ### 1. Docker（通用）
 
+取一份 `docker-compose.yml`（Release 或下载页），**改两行**——要操作的目录
+（`- /vol1/1000:/share`）与版本（`image:` 那行）——然后：
+
 ```bash
-docker run -d --name yc-7zip \
-  -p 8090:8080 \
-  -v /vol1:/vol1 \
-  -v /vol2:/vol2 \
-  -v yc7zip-data:/data \
+docker compose up -d          # 打开 http://<NAS 地址>:8090
+```
+
+升级就是把 `image` 那行的版本改掉，再 `docker compose pull && docker compose up -d`。
+
+不想用 compose，`docker run` 一行也行：
+
+```bash
+docker run -d --name yc-7zip -p 8090:8080 \
+  -v /vol1:/vol1 -v yc7zip-data:/data \
   ycyingchen/yc-7zip:latest \
-  -addr :8080 -data /data -allow-root /vol1 -allow-root /vol2
+  -addr :8080 -data /data -allow-root /vol1
 ```
 
 多架构镜像：`linux/amd64`、`linux/arm64`。
-
-然后打开 `http://<NAS 地址>:8090`。
 
 ### 2. 飞牛 fnOS 应用包（fpk）
 

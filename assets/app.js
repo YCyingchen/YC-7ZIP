@@ -73,13 +73,14 @@
       updateSourceLabel: '更新渠道', sourceAuto: '自动（全部渠道）',
       sourceSelf: '自建源', sourceGitHub: 'GitHub',
       sourceResult: '各渠道本次结果', sourceFailed: '这条不通',
-      wallpaperHint: '可以用 NAS 上的图片，也可以直接上传一张。暗化是保证文字可读的关键。',
-      wallpaperNone: '未设置壁纸', wallpaperFromNas: '从 NAS 选', wallpaperUpload: '上传图片',
+      wallpaperHint: '上传一张图片即可。暗化是保证文字可读的关键。',
+      wallpaperNone: '未设置壁纸', wallpaperUpload: '上传图片',
       wallpaperClear: '清除', wallpaperDim: '暗化', wallpaperBlur: '模糊', wallpaperFit: '铺满方式',
+      wallpaperPanel: '面板透明', wallpaperPanelHint: '调高后页面上的面板会透出壁纸（默认 8% 那点透）；文字可读性靠上面的「暗化」保证。',
       wallpaperEnabled: '启用壁纸', wallpaperSaved: '壁纸已更新', wallpaperCleared: '壁纸已清除',
       fitCover: '铺满裁切', fitContain: '完整显示', fitTile: '平铺',
-      noImageInDir: '这个目录里没有可用的图片', changelogUnavailable: '暂时读不到更新日志',
-      taskDoneHint: '已完成，点击查看结果',
+      changelogUnavailable: '暂时读不到更新日志',
+      taskDoneHint: '已完成，点击查看结果', taskIdle: '无任务',
       filterAll: '全部', filterImage: '图片', filterVideo: '视频', filterArchive: '压缩包', filterDoc: '文档',
       viewList: '列表', viewGrid: '图览', noMatch: '当前筛选下没有匹配的文件',
       preview: '预览', selectThis: '选中这个', deselectThis: '取消选中', openOriginal: '新窗口打开',
@@ -152,13 +153,14 @@
       updateSourceLabel: 'Source', sourceAuto: 'Automatic (all sources)',
       sourceSelf: 'Self-hosted', sourceGitHub: 'GitHub',
       sourceResult: 'Source results', sourceFailed: 'unavailable',
-      wallpaperHint: 'Use an image from the NAS or upload one. Dimming is what keeps the text readable.',
-      wallpaperNone: 'No wallpaper set', wallpaperFromNas: 'Pick on NAS', wallpaperUpload: 'Upload image',
+      wallpaperHint: 'Upload an image. Dimming is what keeps the text readable.',
+      wallpaperNone: 'No wallpaper set', wallpaperUpload: 'Upload image',
       wallpaperClear: 'Clear', wallpaperDim: 'Dim', wallpaperBlur: 'Blur', wallpaperFit: 'Scaling',
+      wallpaperPanel: 'Panel opacity', wallpaperPanelHint: 'Higher values let the wallpaper show through the panels (8% by default); keep the text readable with Dim above.',
       wallpaperEnabled: 'Enable wallpaper', wallpaperSaved: 'Wallpaper updated', wallpaperCleared: 'Wallpaper cleared',
       fitCover: 'Cover', fitContain: 'Contain', fitTile: 'Tile',
-      noImageInDir: 'No usable image in that folder', changelogUnavailable: 'Changelog unavailable',
-      taskDoneHint: 'Done — click to view',
+      changelogUnavailable: 'Changelog unavailable',
+      taskDoneHint: 'Done — click to view', taskIdle: 'No task',
       filterAll: 'All', filterImage: 'Images', filterVideo: 'Videos', filterArchive: 'Archives', filterDoc: 'Documents',
       viewList: 'List', viewGrid: 'Gallery', noMatch: 'Nothing matches the current filter',
       preview: 'Preview', selectThis: 'Select this', deselectThis: 'Deselect', openOriginal: 'Open original',
@@ -416,6 +418,13 @@
     $('repo-link').title = t('repo');
     // 设置面板里的更新渠道选择器也是按语言拼的，切语言要跟着重画
     if (settingsState.update) renderUpdateStatus(settingsState.update);
+    // 任务指示器是常驻的：初始化与切语言都要把空闲态画出来。
+    // 只在"本来就是空闲"时刷，免得正在跑的任务被切语言这一下弄没。
+    // 注意 dataset.state 没设过时是 undefined，不是空串。
+    const pillState = $('task-pill').dataset.state;
+    if (!pillState || pillState === 'idle') {
+      updateTaskPill(null);
+    }
     if (!state.online) $('offline-banner').hidden = false;
   }
 
@@ -1591,6 +1600,9 @@
   // 所以状态要有一个不挡路的落点，并且能一键回到弹层。
   const TASK_GLYPHS = {
     running: '<span class="spin"></span>',
+    // 空闲：虚线圆圈。任务指示是常驻的，没有任务时也得有个"这里能看任务"的样子
+    idle: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+      + 'stroke-width="2"><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/></svg>',
     done: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
       + 'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6"/></svg>',
     error: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
@@ -1602,11 +1614,14 @@
 
   function updateTaskPill(state, text) {
     const pill = $('task-pill');
+    // 常驻：没有任务时也占着这一格，显示「无任务」。
+    // 之前这里直接 hidden，于是"现在到底有没有在跑"只有正在跑时才看得见——
+    // 而"随时能瞄一眼"恰恰是当初要这个指示器的理由。
     if (!state) {
-      pill.hidden = true;
-      pill.dataset.state = '';
-      $('task-glyph').innerHTML = '';
-      $('task-text').textContent = '';
+      pill.hidden = false;
+      pill.dataset.state = 'idle';
+      $('task-glyph').innerHTML = TASK_GLYPHS.idle;
+      $('task-text').textContent = t('taskIdle');
       return;
     }
     pill.hidden = false;
@@ -1625,6 +1640,8 @@
 
   function onTaskPillClick() {
     const state = $('task-pill').dataset.state;
+    // 空闲态什么都不做：它不是按钮，只是那一格的位置说明
+    if (!state || state === 'idle') return;
     if (state === 'running') {
       // 回到进度弹层，随时能看当前阶段
       $('progress-layer').hidden = false;
@@ -1906,6 +1923,12 @@
     const body = document.body;
     settingsState.data = settings;
 
+    // 面板透明化与有没有壁纸无关，所以放在下面那个 early return 之前：
+    // 不然"先调透明、再去掉壁纸"会把面板留成半透明。
+    // 只写一个 CSS 变量：三个面板底色都由它派生，组件不用知道这事。
+    const alpha = Math.max(0, Math.min(90, settings && settings.panel_alpha ? settings.panel_alpha : 0));
+    root.style.setProperty('--panel-alpha', String(alpha / 100));
+
     const on = settings && settings.wallpaper && settings.has_wallpaper;
     body.classList.toggle('has-wallpaper', !!on);
     if (!on) return;
@@ -1940,6 +1963,9 @@
     $('wp-dim-out').textContent = dim + '%';
     $('wp-blur').value = blur;
     $('wp-blur-out').textContent = blur + ' px';
+    const panel = settings.panel_alpha == null ? 0 : settings.panel_alpha;
+    $('wp-panel').value = panel;
+    $('wp-panel-out').textContent = panel + '%';
     $('wp-fit').value = settings.fit || 'cover';
     $('wp-enabled').checked = !!settings.wallpaper;
 
@@ -1961,6 +1987,7 @@
       wallpaper: patch.wallpaper == null ? (cur.wallpaper || false) : patch.wallpaper,
       dim: patch.dim == null ? (cur.dim == null ? 45 : cur.dim) : patch.dim,
       blur: patch.blur == null ? (cur.blur || 0) : patch.blur,
+      panel_alpha: patch.panel_alpha == null ? (cur.panel_alpha || 0) : patch.panel_alpha,
       fit: patch.fit || cur.fit || 'cover',
     };
     const saved = await api('/api/ui-settings', {
@@ -2207,36 +2234,6 @@
     loadChangelog();
   }
 
-  // 从 NAS 上挑一张图当壁纸：复用已有的目录选择弹层
-  async function pickWallpaperFromNas() {
-    state.pickerFor = 'wallpaper';
-    await openPicker(state.browserPath || (state.browserRoots[0] && state.browserRoots[0].path) || '');
-    const confirm = $('server-confirm');
-    confirm.onclick = async function () {
-      const dir = state.pickerPath || state.pickerSelected;
-      $('server-modal').hidden = true;
-      confirm.onclick = null;
-      if (!dir) return;
-      try {
-        const listing = await api('/api/browse?path=' + encodeURIComponent(dir), {}, 20000);
-        const image = (listing.entries || []).find(function (e) {
-          return !e.is_dir && kindOf(e.name) === 'image';
-        });
-        if (!image) { toast(t('noImageInDir'), 'warn'); return; }
-        const saved = await api('/api/wallpaper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_path: image.path }),
-        }, 60000);
-        applyWallpaper(saved);
-        syncSettingsForm(saved);
-        toast(t('wallpaperSaved'), 'success');
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-    };
-  }
-
   function bindSettingsEvents() {
     $('settings-toggle').addEventListener('click', openSettings);
     $('settings-close').addEventListener('click', function () { $('settings-modal').hidden = true; });
@@ -2260,7 +2257,6 @@
       }
     });
 
-    $('btn-wallpaper-nas').addEventListener('click', pickWallpaperFromNas);
     $('btn-wallpaper-upload').addEventListener('click', function () { $('wallpaper-file').click(); });
     $('wallpaper-file').addEventListener('change', async function (e) {
       const file = e.target.files && e.target.files[0];
@@ -2291,6 +2287,16 @@
     });
 
     $('wp-fit').addEventListener('change', function () { saveSettings({ fit: $('wp-fit').value }).catch(function () {}); });
+
+    $('wp-panel').addEventListener('input', function (e) {
+      $('wp-panel-out').textContent = e.target.value + '%';
+      const s = Object.assign({}, settingsState.data || {}, { panel_alpha: Number(e.target.value) });
+      applyWallpaper(s);
+    });
+    $('wp-panel').addEventListener('change', function () {
+      saveSettings({ panel_alpha: Number($('wp-panel').value) }).catch(function () {});
+    });
+
     $('wp-enabled').addEventListener('change', function () { saveSettings({ wallpaper: $('wp-enabled').checked }).catch(function () {}); });
   }
 

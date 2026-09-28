@@ -393,14 +393,13 @@
 
       <section class="settings-section">
         <h3 data-i18n="wallpaperTitle">壁纸</h3>
-        <p class="hint settings-hint" data-i18n="wallpaperHint">可以用 NAS 上的图片，也可以直接上传一张。暗化是保证文字可读的关键。</p>
+        <p class="hint settings-hint" data-i18n="wallpaperHint">上传一张图片即可。暗化是保证文字可读的关键。</p>
 
         <div class="wallpaper-preview" id="wallpaper-preview">
           <span id="wallpaper-empty" data-i18n="wallpaperNone">未设置壁纸</span>
         </div>
 
         <div class="settings-actions">
-          <button class="btn btn-ghost" id="btn-wallpaper-nas" type="button" data-i18n="wallpaperFromNas">从 NAS 选</button>
           <button class="btn btn-ghost" id="btn-wallpaper-upload" type="button" data-i18n="wallpaperUpload">上传图片</button>
           <button class="btn btn-ghost" id="btn-wallpaper-clear" type="button" data-i18n="wallpaperClear">清除</button>
           <input type="file" id="wallpaper-file" accept="image/*" hidden>
@@ -421,6 +420,15 @@
           </label>
           <input type="range" id="wp-blur" min="0" max="40" step="2" value="0">
         </div>
+
+        <div class="field field-inline">
+          <label for="wp-panel">
+            <span data-i18n="wallpaperPanel">面板透明</span>
+            <output id="wp-panel-out">8%</output>
+          </label>
+          <input type="range" id="wp-panel" min="0" max="90" step="2" value="8">
+        </div>
+        <p class="hint settings-hint" data-i18n="wallpaperPanelHint">调高后页面上的面板会透出壁纸（默认 8% 那点透）；文字可读性靠上面的「暗化」保证。</p>
 
         <div class="field field-inline">
           <label for="wp-fit" data-i18n="wallpaperFit">铺满方式</label>

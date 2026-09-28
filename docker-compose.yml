@@ -1,34 +1,15 @@
-# YC-7ZIP —— Docker Compose 部署
-#
-#   cp .env.example .env     # 把 YC7ZIP_SHARE 指向你的数据目录
-#   docker compose up -d     # 打开 http://<主机地址>:<YC7ZIP_PORT>
-#
-# 升级：改 .env 里的 YC7ZIP_TAG，然后 docker compose pull && docker compose up -d
-
+# YC-7ZIP —— 改完这份文件里的值，然后 docker compose up -d
 services:
   yc7zip:
-    image: ycyingchen/yc-7zip:${YC7ZIP_TAG:-latest}
+    image: ycyingchen/yc-7zip:test   # 版本：正式版用 :latest，也可钉死 :zip2609.006
     container_name: yc-7zip
     restart: unless-stopped
-
     ports:
-      # 只让本机访问（前面挂反向代理）就在左边加 127.0.0.1:
-      - "${YC7ZIP_PORT:-8090}:8080"
-
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      # 容器内可读写的路径，逗号分隔。容器能看到什么，完全由下面的 volumes 决定。
-      YC7ZIP_ALLOW_ROOTS: ${YC7ZIP_ALLOW_ROOTS:-/share}
-      YC7ZIP_DATA: /data
-      # 从局域网之外直接访问端口时才需要，格式 user:password
-      YC7ZIP_AUTH: ${YC7ZIP_AUTH:-}
-      YC7ZIP_MAX_UPLOAD: ${YC7ZIP_MAX_UPLOAD:-4G}
-      # 检查更新的渠道与顺序，留空即默认（先自建源，再 GitHub）
-      YC7ZIP_UPDATE_SOURCES: ${YC7ZIP_UPDATE_SOURCES:-}
-
+      - "8090:8080"                  # 左边是访问端口，可改；右边不要动
     volumes:
-      # 工作区：上传模式的文件与临时结果
-      - "${YC7ZIP_DATA:-./data}:/data"
-      # 要操作的目录：左边 NAS 真实路径，右边容器内路径。
-      # 多开几个就照抄一行，并把右边路径补进 YC7ZIP_ALLOW_ROOTS。
-      - "${YC7ZIP_SHARE:-./share}:/share"
+      - /vol1/1000:/share            # 改：左边换成你要操作的 NAS 目录，多开就照抄一行
+      - ./data:/data                 # 工作区与临时文件，放在这份 compose 文件旁边
+    environment:
+      YC7ZIP_ALLOW_ROOTS: /share     # 能读写的路径＝上面挂进来的容器内路径，逗号分隔
+      # YC7ZIP_AUTH: admin:改我      # 要从局域网之外直接访问端口时才需要
+      TZ: Asia/Shanghai

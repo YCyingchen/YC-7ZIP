@@ -1,7 +1,6 @@
 # Local secrets & scratch — never commit
 .env.local
 .env
-!.env.example
 *.pem
 *.key
 

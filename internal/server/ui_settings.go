@@ -37,13 +37,18 @@ type UISettings struct {
 	Blur int `json:"blur"`
 	// Fit 是铺满方式：cover / contain / tile。
 	Fit string `json:"fit"`
+	// PanelAlpha 是操作面板的透明程度（0-90 百分比）。0 表示不透明，
+	// 与不设壁纸时的观感一致；调高壁纸会透出来，文字可读性则更依赖上面的暗化。
+	PanelAlpha int `json:"panel_alpha"`
 	// HasWallpaper 由服务端填，告诉界面有没有可用的图。
 	HasWallpaper bool   `json:"has_wallpaper"`
 	UpdatedAt    string `json:"updated_at,omitempty"`
 }
 
 func defaultSettings() UISettings {
-	return UISettings{Wallpaper: false, Dim: 45, Blur: 0, Fit: "cover"}
+	// PanelAlpha 默认 8：这是有壁纸时原本就有的那点"略透"，作为默认值保留下来，
+	// 免得升级之后观感突变。想要完全不透明就把它拉到 0。
+	return UISettings{Wallpaper: false, Dim: 45, Blur: 0, Fit: "cover", PanelAlpha: 8}
 }
 
 // uiStore 负责读写设置与壁纸文件。
@@ -116,6 +121,14 @@ func sanitizeSettings(s UISettings) UISettings {
 	case "cover", "contain", "tile":
 	default:
 		s.Fit = "cover"
+	}
+	// 上限 90 而不是 100：全透明之后面板就只剩文字浮在照片上，
+	// 那不是"透明化"，是把界面弄坏。
+	if s.PanelAlpha < 0 {
+		s.PanelAlpha = 0
+	}
+	if s.PanelAlpha > 90 {
+		s.PanelAlpha = 90
 	}
 	return s
 }
@@ -286,61 +299,8 @@ func (s *Server) handleWallpaperGet(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, st.ModTime(), f)
 }
 
-// handleWallpaperPost 设置壁纸：上传图片，或指定一个 NAS 上的路径。
+// handleWallpaperPost 设置壁纸：直接上传一张图片。
 func (s *Server) handleWallpaperPost(w http.ResponseWriter, r *http.Request) {
-	ctype := r.Header.Get("Content-Type")
-
-	// JSON 形式：从 NAS 上已有的图片复制过来
-	if strings.HasPrefix(ctype, "application/json") {
-		var body struct {
-			SourcePath string `json:"source_path"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-			writeError(w, http.StatusBadRequest, "请求格式错误："+err.Error())
-			return
-		}
-		abs, err := s.validateServerPath(body.SourcePath, true)
-		if err != nil {
-			writeEngineError(w, err)
-			return
-		}
-		st, err := os.Stat(abs)
-		if err != nil || st.IsDir() {
-			writeError(w, http.StatusBadRequest, "该路径不是文件")
-			return
-		}
-		if st.Size() > wallpaperMaxBytes {
-			writeError(w, http.StatusRequestEntityTooLarge,
-				fmt.Sprintf("图片超过 %d MB，请先压缩", wallpaperMaxBytes>>20))
-			return
-		}
-		f, err := os.Open(abs)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		defer f.Close()
-
-		// 按内容判断类型，不信扩展名
-		ext, err := sniffImageExt(f)
-		if err != nil {
-			writeError(w, http.StatusUnsupportedMediaType, err.Error())
-			return
-		}
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := s.uiSettings.setWallpaper(ext, f); err != nil {
-			writeError(w, http.StatusInternalServerError, "保存壁纸失败："+err.Error())
-			return
-		}
-		s.enableWallpaper()
-		writeJSON(w, http.StatusOK, s.uiSettings.snapshot())
-		return
-	}
-
-	// multipart 形式：直接上传
 	r.Body = http.MaxBytesReader(w, r.Body, wallpaperMaxBytes+(1<<20))
 	file, header, err := r.FormFile("image")
 	if err != nil {

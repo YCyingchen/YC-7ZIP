@@ -215,10 +215,9 @@ jobs:
           cp -r deploy/fpk "$stage/fpk"
           tar -czf "release/$stage.tar.gz" "$stage"
 
-          # compose 部署要用的两个文件，单独打个包方便直接下
+          # compose 部署要用的文件，单独打个包方便直接下
           mkdir -p release/compose
           cp docker-compose.yml release/compose/
-          cp .env.example release/compose/
           tar -czf "release/yc-7zip-$version-compose.tar.gz" -C release compose
           rm -rf release/compose
 
@@ -251,13 +250,13 @@ jobs:
             | --- | --- |
             | `yc-7zip-*-linux-amd64.tar.gz` | x86_64 NAS / 服务器，解压后执行 `./start.sh` |
             | `yc-7zip-*-linux-arm64.tar.gz` | ARM64 设备 |
-            | `yc-7zip-*-compose.tar.gz` | `docker-compose.yml` 与 `.env.example` |
+            | `yc-7zip-*-compose.tar.gz` | `docker-compose.yml`（改两行就能用） |
             | `yc-7zip-*-fpk-src.tar.gz` | 飞牛 fnOS 应用包源码，用 `fnpack build` 生成 `.fpk` |
 
             ### Docker Compose
 
             ```bash
-            cp .env.example .env    # 把 YC7ZIP_SHARE 指向你的数据目录
+            # 打开 docker-compose.yml，把要操作的目录换成自己的，然后
             docker compose up -d
             ```
 

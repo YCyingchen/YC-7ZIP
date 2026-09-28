@@ -209,28 +209,22 @@ details[open] > .fold-head .release-toggle{transform:translateY(-50%) rotate(45d
   <div class="card">
     <h3>Docker Compose <span class="tag">推荐</span></h3>
     <p>多架构镜像，x86_64 与 ARM64 都能用；镜像内自带官方 7-Zip，无需另装。
-      用 compose 而不是 <code>docker run</code>，升级和改配置都只是改一行。</p>
-<pre># 1. 取这两个文件（右侧按钮可直接下载）
-#    docker-compose.yml  .env.example
-# 2. 复制一份 .env 并按需修改
-cp .env.example .env
-
-# 3. 编辑 .env，把 YC7ZIP_SHARE 指向你 NAS 上的数据目录，例如
-#    YC7ZIP_SHARE=/vol1/1000
-
-# 4. 启动
+      配置文件里只有两行要改：要操作的目录与版本。</p>
+<pre># 1. 下载 docker-compose.yml
+# 2. 打开它，把这一行换成你要操作的 NAS 目录
+#      - /vol1/1000:/share
+# 3. 启动
 docker compose up -d
 
-# 升级：改 .env 里的 YC7ZIP_TAG，然后
+# 升级：把 image 那行的版本改掉，然后
 docker compose pull && docker compose up -d</pre>
     <div class="row">
       <a class="btn btn-primary" href="docker-compose.yml" download>下载 docker-compose.yml</a>
-      <a class="btn btn-ghost" href="env.example" download>下载 .env.example</a>
       <a class="btn btn-ghost" href="https://hub.docker.com/r/ycyingchen/yc-7zip" target="_blank" rel="noopener">Docker Hub</a>
     </div>
     <div class="note">
       <b>路径要点：</b>容器能看到的路径 = compose 里挂进去的路径。应用的 <code>/</code> 是
-      容器自己的根，不是 NAS 的根——数据在哪个卷上，就把那个卷挂进 <code>/share</code> 之类的位置，
+      容器自己的根，不是 NAS 的根——数据在哪个卷上，就把那个卷挂进来，
       并把容器内的路径写进 <code>YC7ZIP_ALLOW_ROOTS</code>。
     </div>
   </div>

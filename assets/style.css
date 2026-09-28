@@ -5,10 +5,18 @@
    ========================================================================== */
 
 :root {
+  /* 面板透明化：0 = 不透明（默认观感），由设置里的滑块写这个值。
+     通道值与色值分开写是有意的——要让整片面板半透明，要么把每个组件的
+     背景都改写成 rgba，要么只改这一层；后者只动几个变量，也不会漏掉某处。 */
+  --panel-alpha: 0;
+
   --bg:        #0B0F14;
-  --bg-elev:   #121821;
-  --bg-elev-2: #182130;
-  --bg-sunk:   #0E141C;
+  --bg-elev-rgb:   18 24 33;
+  --bg-elev-2-rgb: 24 33 48;
+  --bg-sunk-rgb:   14 20 28;
+  --bg-elev:   rgb(var(--bg-elev-rgb) / calc(1 - var(--panel-alpha)));
+  --bg-elev-2: rgb(var(--bg-elev-2-rgb) / calc(1 - var(--panel-alpha)));
+  --bg-sunk:   rgb(var(--bg-sunk-rgb) / calc(1 - var(--panel-alpha)));
   --line:      #1F2A38;
   --line-soft: #172231;
   --ink:       #E6EDF6;
@@ -41,9 +49,9 @@
 
 [data-theme="light"] {
   --bg:        #F5F7FA;
-  --bg-elev:   #FFFFFF;
-  --bg-elev-2: #EEF2F7;
-  --bg-sunk:   #EDF1F6;
+  --bg-elev-rgb:   255 255 255;
+  --bg-elev-2-rgb: 238 242 247;
+  --bg-sunk-rgb:   237 241 246;
   --line:      #DCE3EC;
   --line-soft: #E8EDF4;
   --ink:       #101923;
@@ -178,6 +186,14 @@ a { color: var(--accent); }
 .task-pill[data-state="done"]  { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .task-pill[data-state="error"] { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
 .task-pill[data-state="warn"]  { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+/* 空闲态：常驻但不抢眼。它不是提示，只是"任务进度一直在这一格"的占位，
+   所以用中性色、不可点——否则一个绿色的"无任务"会比真任务还显眼。 */
+.task-pill[data-state="idle"] {
+  border-color: var(--line);
+  background: var(--bg-elev-2);
+  color: var(--ink-faint);
+  cursor: default;
+}
 
 .task-glyph { display: grid; place-items: center; width: 13px; height: 13px; flex: none; }
 .task-glyph .spin {
@@ -1565,7 +1581,9 @@ body.has-wallpaper::before {
   /* 模糊会让边缘透出底色，稍微放大盖住 */
   transform: scale(1.06);
 }
+/* 有壁纸时，面板与背景做一次模糊融合；"透多少"交给设置里的「面板透明」
+   （--panel-alpha）决定。这里不再写死 92% —— 否则滑块拉到 0 也还是有 8% 的
+   透，滑块上写的"不透明"和眼睛看到的对不上。 */
 body.has-wallpaper .panel {
-  background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
   backdrop-filter: blur(10px);
 }

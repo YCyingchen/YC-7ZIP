@@ -17,6 +17,18 @@ const BASE = (process.argv[2] || 'http://192.168.1.9:8092').replace(/\/+$/, '');
 const OUT = process.env.UI_OUT || path.join(os.tmpdir(), 'yc7zip-settings');
 fs.mkdirSync(OUT, { recursive: true });
 
+// 上传用的图片：优先用仓库里的测试素材（tools/make-media-fixtures.py 生成），
+// 没有就退回一张 1×1 的 PNG —— 这条用例要的是一条真实的上传请求。
+const ONE_PIXEL_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+function wallpaperPayload() {
+  const fixture = path.join(__dirname, '..', 'dist', 'media', '风景-横向.jpg');
+  if (fs.existsSync(fixture)) {
+    return { name: '风景-横向.jpg', mimeType: 'image/jpeg', buffer: fs.readFileSync(fixture) };
+  }
+  return { name: 'wallpaper.png', mimeType: 'image/png', buffer: Buffer.from(ONE_PIXEL_PNG, 'base64') };
+}
+
 let pass = 0;
 const failures = [];
 function check(name, ok, detail = '') {
@@ -70,7 +82,14 @@ async function checkAndWait(page) {
     check('显示发布通道', /test|stable/.test(current), current);
     check('显示部署方式', /裸二进制|容器|飞牛应用包|binary|container|package/.test(current), current);
 
-    section('2. 应用内更新日志');
+    section('2. 任务指示常驻');
+    // 这个指示器以前是"有任务才出现"，于是想瞄一眼"现在有没有在跑"反而没处看
+    const pill = page.locator('#task-pill');
+    check('空闲时也显示', await pill.isVisible());
+    check('空闲时写着「无任务」', ((await pill.textContent()) || '').includes('无任务'));
+    check('空闲态是中性色而非强调色', (await pill.getAttribute('data-state')) === 'idle');
+
+    section('2b. 应用内更新日志');
     await page.waitForFunction(
       () => document.querySelectorAll('#changelog-inline .release').length > 0,
       { timeout: 15000 }
@@ -86,7 +105,7 @@ async function checkAndWait(page) {
       !!currentVersion && changelogText.includes(currentVersion[0]),
       `当前版本 ${currentVersion ? currentVersion[0] : '未识别'}`
     );
-    check('含小节标题', /新增/.test(changelogText));
+    check('含小节标题', /(新增|修复|变更)/.test(changelogText));
     const itemCount = await page.locator('#changelog-inline .release-items li').count();
     check('渲染出条目', itemCount >= 5, `条目数 ${itemCount}`);
     await page.screenshot({ path: path.join(OUT, '01-设置-更新日志.png'), fullPage: true });
@@ -125,17 +144,58 @@ async function checkAndWait(page) {
     await page.selectOption('#update-source', 'auto');
 
     section('4. 壁纸');
-    // 先用 API 直接设一张，再回来验证界面渲染（模拟"从 NAS 选"的结果）
-    const set = await page.evaluate(async () => {
-      const res = await fetch('api/wallpaper', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_path: '/vol5/1000/空间4/YC-7ZIP/_uitest/media/风景-横向.jpg' }),
-      });
-      return { status: res.status, body: await res.json().catch(() => ({})) };
+    // 走真实的上传按钮：往 <input type=file> 里塞一张图片，触发 change 处理器
+    await page.setInputFiles('#wallpaper-file', wallpaperPayload());
+    await page.waitForFunction(() => document.body.classList.contains('has-wallpaper'), { timeout: 30000 });
+    check('上传图片后壁纸立即生效', true);
+
+    const uploaded = await page.evaluate(async () => {
+      const res = await fetch('api/ui-settings');
+      return res.json();
     });
-    check('通过 NAS 路径设置壁纸', set.status === 200, JSON.stringify(set.body).slice(0, 120));
-    check('返回 has_wallpaper', set.body.has_wallpaper === true, JSON.stringify(set.body));
+    check('服务端记为已设置壁纸', uploaded.has_wallpaper === true, JSON.stringify(uploaded).slice(0, 120));
+    check('记录了设置时间', !!uploaded.updated_at, String(uploaded.updated_at));
+    check('界面上不再有「从 NAS 选」', (await page.locator('#btn-wallpaper-nas').count()) === 0);
+
+    // 面板透明化：滑块要真的改到面板底色，而不是只写了个变量。
+    // 两种情形背景落在不同的槽位——有壁纸时 .panel 的背景是一个颜色，
+    // 没有壁纸时是那段同色的 linear-gradient——所以两个都看，取最小 alpha。
+    const panelAlpha = () =>
+      page.evaluate(() => {
+        const cs = getComputedStyle(document.querySelector('#format-panel'));
+        const paint = cs.backgroundImage !== 'none' ? cs.backgroundImage : cs.backgroundColor;
+        const parts = paint.match(/rgba?\([^)]+\)/g) || [];
+        let min = 1;
+        for (const part of parts) {
+          const nums = part.replace(/rgba?\(|\)/g, '').split(/[,/\s]+/).filter(Boolean);
+          if (nums.length >= 4) min = Math.min(min, Number(nums[3]));
+        }
+        return min;
+      });
+    // 只派发 input 事件，不走 change：change 会把值存到服务端，
+    // 于是"这条用例跑过一次"就会把实例上的设置改掉。
+    const setSlider = async (id, value) => {
+      await page.evaluate(
+        ([sel, val]) => {
+          const el = document.querySelector(sel);
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        },
+        [id, value]
+      );
+      await page.waitForTimeout(200);
+    };
+
+    const before = await page.inputValue('#wp-panel');
+    check('面板透明滑块与服务端设置一致', /^\d+$/.test(before), before);
+    await setSlider('#wp-panel', '60');
+    const alphaVar = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--panel-alpha').trim());
+    check('变量跟着滑块走', Math.abs(Number(alphaVar) - 0.6) < 0.001, alphaVar);
+    check('面板真的更透了', (await panelAlpha()) < 0.5, String(await panelAlpha()));
+    await setSlider('#wp-panel', '0');
+    check('拉到 0 就是完全不透明', (await panelAlpha()) > 0.99, String(await panelAlpha()));
+    await setSlider('#wp-panel', before);
 
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(800);

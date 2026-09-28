@@ -578,7 +578,6 @@ def cmd_nas_download(_: argparse.Namespace) -> int:
     shutil.copy2(ROOT / "CHANGELOG.md", dl / "CHANGELOG.md")
     # 下载页上直接给 compose 文件，不必再进仓库找
     shutil.copy2(ROOT / "docker-compose.yml", dl / "docker-compose.yml")
-    shutil.copy2(ROOT / ".env.example", dl / "env.example")
 
     pkg = DIST / "pkg"
     if not (pkg / f"yc-7zip-{v}-linux-amd64.tar.gz").is_file():
@@ -615,7 +614,6 @@ def cmd_nas_download(_: argparse.Namespace) -> int:
                 "yc-7zip-fpk-src.tar.gz",
                 "yc7zip.fpk",
                 "docker-compose.yml",
-                "env.example",
             ],
         )
         write_update_manifest(dl, v, channel, rel, sums)

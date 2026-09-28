@@ -14,6 +14,13 @@ PID_FILE="${VAR}/app.pid"
 LOG_FILE="${VAR}/info.log"
 PORT="${wizard_app_port:-8090}"
 
+# 可读写的目录＝这个应用的安全边界。安装向导与「应用设置」里都能改
+# （向导字段 wizard_allow_roots 会作为环境变量传进来），留空只放开 /vol1。
+# 这里以前写死 "/vol1,/vol2,/vol3,/vol4,/vol5,/"——那等于整台机器，而这个应用
+# 要解析别人给的压缩包，路径穿越正是这类工具最常见的漏洞。画窄之后，即使被
+# 绕过，损失也只落在列出的目录里。
+ALLOW_ROOTS="${wizard_allow_roots:-/vol1}"
+
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "${LOG_FILE}"
 }
@@ -66,14 +73,14 @@ start() {
     fi
 
     ensure_dirs
-    log "启动 ${bin} -addr 127.0.0.1:${PORT}"
+    log "启动 ${bin} -addr 127.0.0.1:${PORT}（可读写目录：${ALLOW_ROOTS}）"
     # 只绑本机：飞牛的应用网关走下面的 unix socket 进来。磁盘权限放开的同时，
     # 访问仍然要经过飞牛的登录态。
     YC7ZIP_7Z="${APP}/bin/${arch}/7zz" \
         YC7ZIP_SOCKET="${APP}/app.sock" \
         YC7ZIP_BASE_PATH="/app/yc7zip" \
         YC7ZIP_DATA="${VAR}/data" \
-        YC7ZIP_ALLOW_ROOTS="/vol1,/vol2,/vol3,/vol4,/vol5,/" \
+        YC7ZIP_ALLOW_ROOTS="${ALLOW_ROOTS}" \
         nohup "${bin}" -addr "127.0.0.1:${PORT}" >>"${LOG_FILE}" 2>&1 </dev/null &
     # nohup 会把自己替换成目标程序，所以 $! 就是程序自己的 pid
     printf '%s' "$!" >"${PID_FILE}"

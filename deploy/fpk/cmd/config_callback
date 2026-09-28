@@ -2,6 +2,23 @@
 
 ### 修改环境变量后调用。
 
-# YC-7ZIP 不依赖宿主机上的预置资源：官方 7-Zip 与两种架构的二进制都在包内，
-# 运行时目录由 cmd/main 用 TRIM_PKGVAR 自己建。
+# 让新的目录清单生效：fnOS 改完设置会重建运行环境、把新值放进环境变量，
+# 但已经在跑的进程仍然是旧值，所以这里重启一次。照 chat2api 的做法——
+# 只负责把它拉起来，不等待就绪（等就绪会把这里阻塞住）。
+# main 的位置两个都试：cmd/ 在应用目录（/var/apps/<app>/cmd）下，
+# 但有些包会把它也放进 TRIM_APPDEST。
+MAIN=""
+for candidate in "${TRIM_APPDEST}/cmd/main" "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/main"; do
+    if [ -x "$candidate" ]; then
+        MAIN="$candidate"
+        break
+    fi
+done
+
+if [ -n "$MAIN" ]; then
+    "$MAIN" stop >/dev/null 2>&1
+    sleep 1
+    "$MAIN" start >/dev/null 2>&1
+fi
+
 exit 0

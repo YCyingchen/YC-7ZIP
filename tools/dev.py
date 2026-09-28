@@ -446,9 +446,14 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
             client,
             "appcenter-cli uninstall yc7zip 2>&1 | tr '\\r' '\\n' | grep -E 'success|Error' || true",
         )
+        # 允许读写的目录＝这个应用的安全边界。别人在自己的机器上装的时候，
+        # 这一步由安装向导填（wizard/install 里那个字段）；这里只是给
+        # 「在这台 NAS 上重装」传一份等价的值，免得上架用的默认值把本机的用例挤掉。
+        allow_roots = env_value("YC7ZIP_FPK_ALLOW_ROOTS") or "/vol1/1000,/vol5/1000/空间4"
         nas_run(
             client,
-            "printf 'wizard_app_port=8090\\n' > /root/yc7zip-build/env.txt && "
+            f"printf 'wizard_app_port=8090\\nwizard_allow_roots={allow_roots}\\n' "
+            "> /root/yc7zip-build/env.txt && "
             "appcenter-cli install-fpk /root/yc7zip-build/fpk/yc7zip.fpk "
             "-e /root/yc7zip-build/env.txt -v 1 2>&1 | tr '\\r' '\\n' | grep -E 'Error|complete' || true",
         )

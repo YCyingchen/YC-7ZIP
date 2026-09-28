@@ -442,11 +442,27 @@ func TestBrowseAllowRoots(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %v", entries)
 	}
 
-	// A directory outside the allow list must not be readable.
-	res, _ = h.json("GET", "/api/browse?path="+filepath.Dir(shared), nil)
+	// 越界的目录既不列出来、也不说"这个路径不在允许范围内"——
+	// 后者等于告诉任何能打开页面的人 NAS 上有哪些路径。
+	// 这里用一个**平行的**目录而不是父目录：父目录正好是允许根路径的前缀，
+	// 响应里出现它的名字是正常的，拿它做断言会误报。
+	outside := t.TempDir()
+	defer os.RemoveAll(outside)
+	res, body = h.json("GET", "/api/browse?path="+outside, nil)
 	res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("out-of-root browse should be 403, got %d", res.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("越界浏览应当退回根视图，得到 %d", res.StatusCode)
+	}
+	if body["path"] != "" {
+		t.Fatalf("退回根视图时 path 应为空，得到 %v", body["path"])
+	}
+	roots, _ := body["roots"].([]any)
+	if len(roots) != 1 {
+		t.Fatalf("应当给出允许的根目录，得到 %v", body["roots"])
+	}
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(raw), filepath.Base(outside)) {
+		t.Fatalf("响应里不该出现越界的那个路径：%s", raw)
 	}
 }
 

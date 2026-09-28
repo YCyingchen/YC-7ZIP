@@ -295,7 +295,9 @@ func (s *Server) browseRoots() []browseEntry {
 		if err != nil || !st.IsDir() {
 			continue
 		}
-		out = append(out, browseEntry{Name: filepath.Base(abs), Path: abs, IsDir: true})
+		// 名字直接用完整路径：允许的根目录往往来自不同卷，只显示最后一段
+		// （比如 "1000" 与 "空间4"）根本分不清哪一个在哪。
+		out = append(out, browseEntry{Name: abs, Path: abs, IsDir: true})
 	}
 	return out
 }
@@ -338,8 +340,19 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	abs = filepath.Clean(abs)
-	if err := s.checkAllowed(abs); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+	if !s.isAllowed(abs) {
+		// 不在清单里的路径**不显示**，而不是回一句"路径不在允许范围内：/xxx"。
+		// 后者等于把 NAS 上有哪些路径告诉任何能打开这个页面的人（上架之后是这台
+		// NAS 的所有用户）；对用户来说，一句错误也不如直接给他能看的那些目录。
+		// 所以退回"允许的根目录"那一层：路径藏住了，下一步也有地方可点。
+		s.log.Warn("浏览了允许范围之外的路径，已回退到允许的根目录", "path", abs)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"enabled": true,
+			"path":    "",
+			"parent":  "",
+			"roots":   s.browseRoots(),
+			"entries": []browseEntry{},
+		})
 		return
 	}
 
@@ -373,8 +386,9 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return strings.ToLower(entries[a].Name) < strings.ToLower(entries[b].Name)
 	})
 
+	// 上级只在也允许的情况下才给：不然点一下就被打回根视图，像坏了。
 	parent := filepath.Dir(abs)
-	if err := s.checkAllowed(parent); err != nil || parent == abs {
+	if !s.isAllowed(parent) || parent == abs {
 		parent = ""
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

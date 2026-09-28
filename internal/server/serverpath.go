@@ -199,7 +199,9 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("path")
 	abs, err := s.validateServerPath(raw, true)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		// 走统一映射：路径写错是 400，越界是 403。之前这里一律写成 400，
+		// 于是"不在允许范围内"和"路径不存在"在客户端看来没有区别。
+		writeEngineError(w, err)
 		return
 	}
 

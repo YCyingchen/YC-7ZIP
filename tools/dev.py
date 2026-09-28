@@ -314,21 +314,26 @@ def cmd_nas_test(_: argparse.Namespace) -> int:
     say("推送到 NAS")
     client = nas_client()
     try:
-        # 上一轮起的测试实例会占住同名二进制，此时 SFTP 只回一句没头没脑的
-        # "Failure"（内核那边其实是 Text file busy）。先按端口找出来停掉，
-        # 别指望运维能从那一句里猜出原因。
+        # 任何还在跑这个二进制的进程都会占住它，不只是 :8092 那个监听者
+        # （比如排查时临时起的另一个端口的实例）。所以按可执行文件本身来找，
+        # 只看端口会漏。SFTP 在这种情况下只回一句 "Failure"（内核那边是
+        # Text file busy），没有这一步就得靠猜。
         nas_run(
             client,
+            'for pid in $(ls /proc | grep -E "^[0-9]+$"); do '
+            'exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue; '
+            'case "$exe" in /root/yc7zip-test/yc7zip*) '
+            'echo "停掉占用该二进制的进程 pid=$pid"; kill "$pid";; esac; done; '
             "pid=$(ss -ltnp 2>/dev/null | grep ':8092' | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); "
-            "if [ -n \"$pid\" ]; then echo \"停掉旧测试实例 pid=$pid\"; kill \"$pid\"; sleep 1; fi; "
-            "echo 可以推送",
+            '[ -n "$pid" ] && { echo "停掉 :8092 的监听者 pid=$pid"; kill "$pid"; }; '
+            "sleep 1; echo 可以推送",
         )
         try:
             nas_put(client, DIST / "amd64" / "yc7zip", "/root/yc7zip-test/yc7zip")
         except OSError as exc:
             raise RuntimeError(
-                "写不进 /root/yc7zip-test/yc7zip —— 多半是它还在跑，占着这个文件。"
-                f"先停掉 :8092 上的测试实例再试。底层报错：{exc}"
+                "写不进 /root/yc7zip-test/yc7zip —— 还有进程在跑这个二进制并占着它。"
+                f"先用 ls -l /proc/*/exe 找出是谁再停掉。底层报错：{exc}"
             ) from exc
         for pkg, path in tests.items():
             nas_put(client, path, f"/root/yc7zip-test/{pkg}.test")

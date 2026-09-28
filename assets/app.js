@@ -436,7 +436,9 @@
       state.online = true;
       state.health = health;
       const roots = Array.isArray(health.allow_roots) ? health.allow_roots : [];
-      state.browserRoots = roots;
+      // 存成与 /api/browse 的 roots 同形状的对象：根目录视图就是照它渲染的，
+      // 直接放字符串会让每一行没有名字（只剩一个复选框和一个 0 B）。
+      state.browserRoots = roots.map((p) => ({ name: p, path: p, is_dir: true, size: 0 }));
       if (health.repo_url) {
         state.repoUrl = trimSlash(health.repo_url);
         $('repo-link').href = state.repoUrl;
@@ -577,7 +579,9 @@
       }
       state.browserPath = data.path || '';
       state.browserEntries = data.path ? (data.entries || []) : [];
-      state.browserRoots = data.path && data.roots ? data.roots : state.browserRoots;
+      // 服务端给的那份才是权威的（允许清单运行时会变）。之前只在"有 path"时
+      // 才更新，于是退回根视图时用的还是初始化那一份，甚至还是字符串。
+      if (data.roots && data.roots.length) state.browserRoots = data.roots;
       renderCrumbs(data.path || '', data.parent || '', data.roots || []);
       renderBrowser();
     } catch (err) {
@@ -1853,10 +1857,18 @@
     setSource('server');
 
     // 先问服务端这是什么：目录就直接进目录，文件才预选并决定模式。
+    //
+    // 问不到就到此为止，不要再按扩展名去猜。问不到只有两种可能：路径不在允许
+    // 范围内（服务端现在不明说），或者它根本不存在——这两种情况都不该把它摆到
+    // 界面上：让"已选择"里出现一个你不该看见的路径，比给一句报错更糟。
     let info = null;
     try {
       info = await api(`/api/inspect?path=${encodeURIComponent(path)}`, {}, 15000);
-    } catch { /* 路径不可用时退回到按扩展名判断 */ }
+    } catch {
+      await loadDir('');
+      renderBrowser();
+      return;
+    }
 
     if (info && info.is_dir) {
       setMode(action === 'extract' ? 'extract' : 'compress');

@@ -681,10 +681,23 @@ func (s *Server) resolveServerSources(paths []string) (string, []string, error) 
 
 // checkAllowed enforces the allow-root boundary.
 //
+// 判据都在 isAllowed 里，这里只负责"拒绝时说什么"。**不把路径回给客户端**：
+// 能打开这个页面的人（上架之后是这台 NAS 上的所有用户）不该靠一句报错就把
+// NAS 上有哪些路径探出来。路径记在服务端日志里，排障不吃亏。
+func (s *Server) checkAllowed(abs string) error {
+	if s.isAllowed(abs) {
+		return nil
+	}
+	s.log.Warn("拒绝访问允许范围之外的路径", "path", abs)
+	return forbidden("这个位置不在允许访问的范围内")
+}
+
+// isAllowed 判断绝对路径是否落在某个允许根目录之内。
+//
 // The filesystem root has to be handled on its own: joining it with a
 // separator produces "//", which no real path starts with, so a "/" root would
 // silently reject everything instead of allowing everything.
-func (s *Server) checkAllowed(abs string) error {
+func (s *Server) isAllowed(abs string) bool {
 	for _, root := range s.cfg.AllowRoots {
 		rootAbs, err := filepath.Abs(root)
 		if err != nil {
@@ -693,15 +706,15 @@ func (s *Server) checkAllowed(abs string) error {
 		rootAbs = filepath.Clean(rootAbs)
 		if rootAbs == string(os.PathSeparator) {
 			if filepath.IsAbs(abs) {
-				return nil
+				return true
 			}
 			continue
 		}
 		if abs == rootAbs || strings.HasPrefix(abs, rootAbs+string(os.PathSeparator)) {
-			return nil
+			return true
 		}
 	}
-	return forbidden("路径不在允许范围内：%s", abs)
+	return false
 }
 
 // commonDir returns the deepest directory that contains every path in dirs.

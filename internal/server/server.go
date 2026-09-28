@@ -134,6 +134,8 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("GET /api/browse", s.handleBrowse)
 	s.mux.HandleFunc("GET /api/inspect", s.handleInspect)
+	s.mux.HandleFunc("GET /api/thumb", s.handleThumb)
+	s.mux.HandleFunc("GET /api/raw", s.handleRaw)
 
 	s.mux.HandleFunc("GET /", s.handleStatic)
 }

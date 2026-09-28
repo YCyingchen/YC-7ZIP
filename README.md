@@ -136,54 +136,6 @@ cd yc-7zip-<版本>-linux-amd64
 
 ---
 
-## 开发
-
-```bash
-go test ./...            # 需要 7-Zip：export YC7ZIP_7Z=/path/to/7zz
-
-# 准备发布件（二进制 + 7-Zip）
-deploy/build.sh dist
-
-# 构建镜像
-deploy/build.sh docker 1.0.0
-```
-
-目录结构：
-
-```
-main.go                  入口、参数解析、监听方式
-embed.go                 前端资源内嵌
-index.html assets/       前端（单页，零依赖，中英双语）
-internal/engine/         7-Zip 封装：列表 / 解压 / 压缩 / 分卷识别
-internal/job/            任务工作区与生命周期
-internal/server/         HTTP API、NAS 文件浏览、服务端路径读写
-deploy/fpk/              飞牛应用包源码
-deploy/build.sh          构建脚本
-tools/                   开发与验收脚本
-```
-
-### 验收脚本
-
-项目自带三层验收，全部针对真实运行的服务：
-
-```bash
-# 1. Go 单元测试与集成测试
-export YC7ZIP_7Z=/opt/7z/7zz
-go test ./... -v
-
-# 2. HTTP 端到端（对着已部署的服务跑）
-powershell -File tools/e2e-nas.ps1 -Base http://192.168.1.9:8090
-
-# 3. 真实浏览器验收（Playwright）
-export PW_MODULE=/path/to/node_modules/playwright
-node tools/ui-test.cjs http://192.168.1.9:8090
-```
-
-浏览器验收覆盖：浏览 NAS 文件 → 多选 → 分卷压缩写回 NAS → 选中**中间某一卷**解压 →
-校验落盘内容 → 语言/主题切换 → 移动端无横向溢出 → 被 `?path=` 唤起时自动选中。
-
----
-
 ## 版本号规则
 
 ```
@@ -196,28 +148,66 @@ zip2609.001
 └──────────── 项目前缀
 ```
 
-`VERSION` 文件是唯一来源，Docker 标签与二进制内的 `main.version` 都由它推导：
-
-```bash
-deploy/version.sh bump            # zip2609.001 -> zip2609.002
-deploy/version.sh bump --month    # 跨月时重置：-> zip2610.001
-deploy/version.sh check           # 校验格式
-```
+`VERSION` 文件是唯一来源，Docker 标签与二进制内的 `main.version` 都由它推导。
 
 **飞牛 fpk 是唯一的例外**：`fnpack` 打包含有版本号的 manifest 时只接受 semver
 （`x.y.z[-r]`），`zip2609.001` 会被直接拒绝。所以 manifest 里写的是换算值
 `26.9.1`（年.月.修订），由脚本生成、CI 校验：
 
 ```bash
-deploy/version.sh fpk             # zip2609.001 -> 26.9.1
-deploy/version.sh sync-manifest   # 把换算值写进 deploy/fpk/manifest
+python3 tools/version.py fpk             # zip2609.001 -> 26.9.1
+python3 tools/version.py sync-manifest   # 把换算值写进 deploy/fpk/manifest
 ```
 
-发布就是在推好代码后打个同名标签：
+## 开发
 
 ```bash
-git tag zip2609.001 && git push origin zip2609.001
+python3 tools/dev.py check          # gofmt + vet + 版本号校验
+python3 tools/dev.py linux          # 交叉编译 linux/amd64 与 arm64
+python3 tools/dev.py dist           # 产出发布件（二进制 + 7-Zip + tar.gz）
+python3 tools/dev.py nas-test       # 推到 NAS 并在 NAS 上跑测试
+python3 tools/dev.py nas-app        # 在 NAS 上构建镜像、推仓库、打 fpk、重装
+python3 tools/dev.py nas-download   # 把下载页与产物放到 NAS 的下载目录
+python3 tools/dev.py ui             # 真实浏览器验收
 ```
+
+构建工具一律用 Python 而不是 PowerShell / bash：这一路上引号和转义踩了太多次坑
+（here-string 把 `$ROOT` 展开成空、`Set-Content` 按 ANSI 回写把中文搅乱、
+`printf '%d' 09` 把月份当成八进制算成 0）。Python 里这些都是显式的。
+
+目录结构：
+
+```
+main.go                  入口、参数解析、监听方式（TCP 与 unix socket）
+embed.go                 前端资源内嵌
+index.html assets/       前端（单页，零依赖，中英双语，列表与图览双视图）
+internal/engine/         7-Zip 封装：列表 / 解压 / 压缩 / 分卷识别
+internal/job/            任务工作区与生命周期
+internal/server/         HTTP API、NAS 文件浏览、服务端路径读写、缩略图
+deploy/fpk/              飞牛应用包源码
+deploy/download-page/    下载页
+tools/                   构建、部署与验收脚本（全 Python）
+```
+
+### 验收脚本
+
+项目自带三层验收，全部针对真实运行的服务：
+
+```bash
+# 1. Go 单元测试与集成测试（需要 7-Zip）
+export YC7ZIP_7Z=/opt/7z/7zz
+go test ./... -v
+
+# 2. HTTP 端到端（对着已部署的服务跑）
+python3 tools/e2e.py http://192.168.1.9:8090
+
+# 3. 真实浏览器验收（Playwright）
+export PW_MODULE=/path/to/node_modules/playwright
+python3 tools/dev.py ui
+```
+
+浏览器验收覆盖：浏览 NAS 文件 → 多选 → 分卷压缩写回 NAS → 选中**中间某一卷**解压 →
+校验落盘内容 → 语言/主题切换 → 移动端无横向溢出 → 被 `?path=` 唤起时自动选中。
 
 ---
 

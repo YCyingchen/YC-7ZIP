@@ -46,11 +46,12 @@ jobs:
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             v="${GITHUB_REF_NAME}"
           else
-            v=$(sh deploy/version.sh show)
+            v=$(python3 tools/version.py show)
           fi
-          sh deploy/version.sh check
+          # check 会校验 VERSION 格式与 manifest 一致性
+          python3 tools/version.py check
           # 标签必须和 VERSION 文件一致，否则 manifest、镜像标签、二进制内版本会各说各话
-          file=$(sh deploy/version.sh show)
+          file=$(python3 tools/version.py show)
           if [ "$v" != "$file" ]; then
             echo "标签 $v 与 VERSION 文件 $file 不一致" >&2
             exit 1
@@ -111,7 +112,7 @@ jobs:
 
       - name: 解析版本号
         id: ver
-        run: echo "value=$(sh deploy/version.sh show)" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(python3 tools/version.py show)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -156,7 +157,7 @@ jobs:
       - name: 打包发布件
         run: |
           set -eux
-          version=$(sh deploy/version.sh show)
+          version=$(python3 tools/version.py show)
           mkdir -p release
 
           for arch in amd64 arm64; do

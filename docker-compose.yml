@@ -1,0 +1,42 @@
+# YC-7ZIP — 直接用 Docker Compose 部署
+#
+# 三步：
+#   1. cp .env.example .env   # 按需改端口与要操作的目录
+#   2. 编辑 .env 里的 YC7ZIP_SHARE 指向你 NAS 上的数据目录
+#   3. docker compose up -d
+#
+# 打开 http://<主机地址>:<YC7ZIP_PORT>
+
+services:
+  yc7zip:
+    image: ycyingchen/yc-7zip:${YC7ZIP_TAG:-latest}
+    container_name: yc-7zip
+    restart: unless-stopped
+
+    ports:
+      # 只在内网使用时保持默认即可；
+      # 想仅本机访问（配合反向代理）就改成 "127.0.0.1:${YC7ZIP_PORT:-8090}:8080"
+      - "${YC7ZIP_PORT:-8090}:8080"
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 允许读写的目录，逗号分隔。注意：这里写的是**容器内**路径，
+      # 容器能看到什么完全由下面的 volumes 决定。
+      YC7ZIP_ALLOW_ROOTS: ${YC7ZIP_ALLOW_ROOTS:-/share}
+      # 需要从局域网之外访问时启用，格式 user:password
+      YC7ZIP_AUTH: ${YC7ZIP_AUTH:-}
+      # 单个任务的上传上限（仅上传模式用得到）
+      YC7ZIP_MAX_UPLOAD: ${YC7ZIP_MAX_UPLOAD:-4G}
+
+    volumes:
+      # 工作区：上传模式的文件与临时结果，必须可写
+      - "${YC7ZIP_DATA:-./data}:/data"
+      # 要操作的目录。左边是 NAS 上的真实路径，右边是容器内路径。
+      # 需要开放多个目录就照抄这一行，并把右边路径加进 YC7ZIP_ALLOW_ROOTS，
+      # 例如：
+      #   - /vol1/1000/相册:/share/相册
+      #   - /vol1/1000/下载:/share/下载
+      # 此时 YC7ZIP_ALLOW_ROOTS=/share/相册,/share/下载
+      - "${YC7ZIP_SHARE:-./share}:/share"
+
+    # 端口、健康检查等由镜像内置；容器健康即页面可用

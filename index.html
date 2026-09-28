@@ -79,10 +79,33 @@
         <div class="panel-head browser-head">
           <div class="crumbs" id="crumbs" aria-label="当前路径"></div>
           <div class="panel-head-actions">
+            <select class="mini-select" id="type-filter" title="按类型筛选">
+              <option value="all" data-i18n="filterAll">全部</option>
+              <option value="image" data-i18n="filterImage">图片</option>
+              <option value="video" data-i18n="filterVideo">视频</option>
+              <option value="archive" data-i18n="filterArchive">压缩包</option>
+              <option value="doc" data-i18n="filterDoc">文档</option>
+            </select>
+            <div class="view-switch" role="group" aria-label="视图">
+              <button class="view-btn is-active" id="view-list" type="button" title="列表" aria-label="列表">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                  <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>
+                </svg>
+              </button>
+              <button class="view-btn" id="view-grid" type="button" title="图览" aria-label="图览">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/>
+                  <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/>
+                  <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+                  <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+                </svg>
+              </button>
+            </div>
             <button class="link-btn" id="browser-refresh" type="button" data-i18n="refresh">刷新</button>
           </div>
         </div>
         <ul class="filelist filelist-scroll browser-list" id="browser-list"></ul>
+        <div class="gallery" id="browser-gallery" hidden></div>
       </div>
 
       <!-- 上传：次入口 -->
@@ -312,6 +335,21 @@
       <p class="hint" id="server-selected"></p>
       <button class="btn btn-primary" id="server-confirm" type="button" data-i18n="pickerConfirm">用此目录</button>
     </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-inner">
+    <div class="lightbox-head">
+      <span class="lightbox-name" id="lightbox-name"></span>
+      <div class="lightbox-actions">
+        <button class="btn btn-ghost" id="lightbox-pick" type="button" data-i18n="selectThis">选中这个</button>
+        <button class="btn btn-ghost" id="lightbox-open" type="button" target="_blank" data-i18n="openOriginal">新窗口打开</button>
+        <button class="link-btn" id="lightbox-close" type="button" data-i18n="close">关闭</button>
+      </div>
+    </div>
+    <div class="lightbox-body" id="lightbox-body"></div>
+    <div class="lightbox-foot" id="lightbox-foot"></div>
   </div>
 </div>
 

@@ -62,6 +62,11 @@
       errorTitle: '出错了', copyError: '复制报错信息', errorDetail: '环境信息（报错时一并贴给对方）',
       errorCopied: '报错信息已复制', errorCopyFailed: '复制失败，请手动选中上面的文字',
       reportIssue: '在 GitHub 提交 Issue', repo: '项目仓库 / 反馈问题',
+      filterAll: '全部', filterImage: '图片', filterVideo: '视频', filterArchive: '压缩包', filterDoc: '文档',
+      viewList: '列表', viewGrid: '图览', noMatch: '当前筛选下没有匹配的文件',
+      preview: '预览', selectThis: '选中这个', deselectThis: '取消选中', openOriginal: '新窗口打开',
+      kindImage: '图片', kindVideo: '视频', kindArchive: '压缩包', kindDoc: '文档', kindOther: '文件',
+      pickedHint: '点击缩略图选中／取消；右上角按钮看大图',
       itemsCount: '{n} 项', totalSize: '总大小', packedSize: '压缩后', ratio: '压缩率',
       enterDir: '进入目录', selectDir: '选择此目录',
       pickerTitle: '选择输出目录', pickerConfirm: '用此目录', close: '关闭',
@@ -117,6 +122,11 @@
       errorDetail: 'Environment (paste this along with the error)',
       errorCopied: 'Error report copied', errorCopyFailed: 'Copy failed — select the text above manually',
       reportIssue: 'Open a GitHub issue', repo: 'Repository / report a bug',
+      filterAll: 'All', filterImage: 'Images', filterVideo: 'Videos', filterArchive: 'Archives', filterDoc: 'Documents',
+      viewList: 'List', viewGrid: 'Gallery', noMatch: 'Nothing matches the current filter',
+      preview: 'Preview', selectThis: 'Select this', deselectThis: 'Deselect', openOriginal: 'Open original',
+      kindImage: 'image', kindVideo: 'video', kindArchive: 'archive', kindDoc: 'doc', kindOther: 'file',
+      pickedHint: 'Click a tile to select; use the corner button to preview',
       itemsCount: '{n} item(s)', totalSize: 'Total', packedSize: 'Packed', ratio: 'Ratio',
       enterDir: 'Open folder', selectDir: 'Use this folder',
       pickerTitle: 'Choose the output folder', pickerConfirm: 'Use this folder', close: 'Close',
@@ -165,6 +175,35 @@
     return false;
   }
 
+  // 图览用它决定要不要去取缩略图，以及筛选器按什么归类
+  const KIND_EXT = {
+    image: ['jpg', 'jpeg', 'jpe', 'png', 'gif', 'webp', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'svg'],
+    video: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'ts', 'mpg', 'mpeg'],
+    doc: ['pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'json', 'xml', 'log', 'ini', 'conf', 'yml', 'yaml'],
+  };
+
+  function kindOf(name) {
+    const lower = String(name).toLowerCase();
+    const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.') + 1) : '';
+    if (KIND_EXT.image.includes(ext)) return 'image';
+    if (KIND_EXT.video.includes(ext)) return 'video';
+    if (isArchiveName(lower)) return 'archive';
+    if (KIND_EXT.doc.includes(ext)) return 'doc';
+    return 'other';
+  }
+
+  function kindLabel(kind) {
+    return t({ image: 'kindImage', video: 'kindVideo', archive: 'kindArchive', doc: 'kindDoc' }[kind] || 'kindOther');
+  }
+
+  function thumbURL(path, w) {
+    return apiPath(`/api/thumb?path=${encodeURIComponent(path)}&w=${w || 320}`);
+  }
+
+  function rawURL(path) {
+    return apiPath(`/api/raw?path=${encodeURIComponent(path)}`);
+  }
+
   // --------------------------------------------------------------- 状态
 
   const state = {
@@ -180,6 +219,10 @@
     browserRoots: [],
     browserPath: '',
     browserEntries: [],
+    /** 视图：列表 / 图览 */
+    view: 'list',
+    /** 类型筛选：all / image / video / archive / doc */
+    typeFilter: 'all',
     /** 选中的 NAS 路径（压缩可多选，解压只有一个） */
     picked: new Map(),
 
@@ -457,6 +500,14 @@
     return state.formats.find((f) => f.id === state.format) || state.formats[0];
   }
 
+  function setView(view) {
+    state.view = view;
+    $('view-list').classList.toggle('is-active', view === 'list');
+    $('view-grid').classList.toggle('is-active', view === 'grid');
+    try { localStorage.setItem('yc7zip-view', view); } catch { /* 隐私模式 */ }
+    renderBrowser();
+  }
+
   function renderDropCopy() {
     const extract = state.mode === 'extract';
     $('drop-title').textContent = t(extract ? 'dropTitleArchive' : 'dropTitle');
@@ -542,14 +593,31 @@
     return Math.min(1, parts.length);
   }
 
-  function renderBrowser() {
-    const list = $('browser-list');
-    if (state.source !== 'server') return;
-    list.innerHTML = '';
-
+  // 筛选只作用于文件：目录要一直可见，否则没法往下走
+  function visibleEntries() {
     const rows = state.browserPath ? state.browserEntries : state.browserRoots;
+    if (state.typeFilter === 'all') return rows;
+    return rows.filter((e) => e.is_dir || kindOf(e.name) === state.typeFilter);
+  }
+
+  function renderBrowser() {
+    if (state.source !== 'server') return;
+    const list = $('browser-list');
+    const gallery = $('browser-gallery');
+    const grid = state.view === 'grid';
+    list.hidden = grid;
+    gallery.hidden = !grid;
+
+    const rows = visibleEntries();
+    if (grid) renderGallery(gallery, rows);
+    else renderList(list, rows);
+  }
+
+  function renderList(list, rows) {
+    list.innerHTML = '';
     if (!rows.length) {
-      list.innerHTML = `<li class="muted-row">${escapeHtml(t('emptyDir'))}</li>`;
+      list.innerHTML = `<li class="muted-row">${escapeHtml(
+        state.typeFilter === 'all' ? t('emptyDir') : t('noMatch'))}</li>`;
       return;
     }
 
@@ -573,12 +641,8 @@
       name.textContent = entry.name;
       name.title = entry.path;
       name.addEventListener('click', () => {
-        if (entry.is_dir) {
-          loadDir(entry.path);
-        } else {
-          togglePick(entry, !state.picked.has(entry.path));
-          renderBrowser();
-        }
+        if (entry.is_dir) loadDir(entry.path);
+        else { togglePick(entry, !state.picked.has(entry.path)); renderBrowser(); }
       });
       li.appendChild(name);
 
@@ -590,6 +654,185 @@
       }
       list.appendChild(li);
     });
+  }
+
+  // renderGallery 画网格。缩略图由服务端缩放；服务端解不了的格式（webp/avif 等）
+  // 会自动重定向到原文件，交给浏览器自己解码。
+  function renderGallery(host, rows) {
+    host.innerHTML = '';
+    if (!rows.length) {
+      host.innerHTML = `<div class="muted-row">${escapeHtml(
+        state.typeFilter === 'all' ? t('emptyDir') : t('noMatch'))}</div>`;
+      return;
+    }
+
+    const io = videoObserver();
+    rows.forEach((entry) => {
+      const kind = entry.is_dir ? 'dir' : kindOf(entry.name);
+      const tile = document.createElement('div');
+      tile.className = 'tile' + (state.picked.has(entry.path) ? ' is-picked' : '');
+      tile.dataset.path = entry.path;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'tile-thumb';
+
+      if (entry.is_dir) {
+        thumb.insertAdjacentHTML('beforeend', svgIcon(true));
+      } else if (kind === 'image') {
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.alt = entry.name;
+        img.src = thumbURL(entry.path, 320);
+        // 服务端生成失败时退回图标，而不是留一个破图
+        img.addEventListener('error', () => {
+          img.remove();
+          thumb.insertAdjacentHTML('beforeend', svgIcon(false));
+        });
+        thumb.appendChild(img);
+      } else if (kind === 'video') {
+        const ph = document.createElement('div');
+        ph.className = 'tile-video-ph';
+        ph.insertAdjacentHTML('beforeend', svgIcon(false));
+        thumb.appendChild(ph);
+        // <video> 只在滚到可见时才挂上去，避免一次列目录就发几十个请求
+        io.observe(ph, entry.path);
+      } else {
+        thumb.insertAdjacentHTML('beforeend', svgIcon(false));
+      }
+
+      const badge = document.createElement('span');
+      badge.className = 'tile-badge';
+      badge.textContent = '✓';
+      thumb.appendChild(badge);
+
+      if (kind === 'image' || kind === 'video') {
+        const zoom = document.createElement('button');
+        zoom.type = 'button';
+        zoom.className = 'tile-zoom';
+        zoom.title = t('preview');
+        zoom.setAttribute('aria-label', t('preview'));
+        zoom.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+          + 'stroke-width="1.9" stroke-linecap="round"><path d="M3 9V4h5M21 9V4h-5M3 15v5h5M21 15v5h-5"/></svg>';
+        zoom.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(entry); });
+        thumb.appendChild(zoom);
+
+        const tag = document.createElement('span');
+        tag.className = 'tile-kind';
+        tag.textContent = kindLabel(kind);
+        thumb.appendChild(tag);
+      }
+
+      tile.appendChild(thumb);
+
+      const meta = document.createElement('div');
+      meta.className = 'tile-meta';
+      const name = document.createElement('span');
+      name.className = 'tile-name';
+      name.textContent = entry.name;
+      name.title = entry.path;
+      meta.appendChild(name);
+      if (!entry.is_dir) {
+        const size = document.createElement('span');
+        size.className = 'tile-size';
+        size.textContent = humanBytes(entry.size);
+        meta.appendChild(size);
+      }
+      tile.appendChild(meta);
+
+      tile.addEventListener('click', () => {
+        if (entry.is_dir) { loadDir(entry.path); return; }
+        togglePick(entry, !state.picked.has(entry.path));
+        renderBrowser();
+      });
+      // 双击直接看大图
+      tile.addEventListener('dblclick', () => {
+        if (!entry.is_dir && (kind === 'image' || kind === 'video')) openLightbox(entry);
+      });
+
+      host.appendChild(tile);
+    });
+  }
+
+  // 视频首帧交给浏览器出（preload=metadata），用 IntersectionObserver
+  // 控制加载时机，省得一次列目录就并发拉几十个视频头。
+  let videoIO = null;
+  function videoObserver() {
+    if (videoIO) return videoIO;
+    videoIO = {
+      observer: new IntersectionObserver((items) => {
+        items.forEach((item) => {
+          if (!item.isIntersecting) return;
+          const el = item.target;
+          videoIO.observer.unobserve(el);
+          const path = el.dataset.path;
+          const v = document.createElement('video');
+          v.src = rawURL(path);
+          v.preload = 'metadata';
+          v.muted = true;
+          v.playsInline = true;
+          v.addEventListener('loadeddata', () => { el.innerHTML = ''; el.appendChild(v); });
+          v.addEventListener('error', () => { /* 保留图标 */ });
+          // 先把元素塞进去触发元数据加载，拿到帧后再清掉占位图标
+          el.appendChild(v);
+        });
+      }, { root: null, rootMargin: '200px' }),
+      observe(el, path) {
+        el.dataset.path = path;
+        videoIO.observer.observe(el);
+      },
+    };
+    return videoIO;
+  }
+
+  // 大图查看：看图/看视频时能确认内容，不用先选中再回头取消
+  function openLightbox(entry) {
+    const box = $('lightbox');
+    const body = $('lightbox-body');
+    const kind = kindOf(entry.name);
+    body.innerHTML = '';
+
+    if (kind === 'video') {
+      const v = document.createElement('video');
+      v.src = rawURL(entry.path);
+      v.controls = true;
+      v.autoplay = true;
+      v.playsInline = true;
+      body.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = rawURL(entry.path);
+      img.alt = entry.name;
+      img.addEventListener('error', () => {
+        body.innerHTML = `<div class="muted-row">${escapeHtml(t('failed'))}</div>`;
+      });
+      body.appendChild(img);
+    }
+
+    $('lightbox-name').textContent = entry.name;
+    $('lightbox-foot').textContent = `${humanBytes(entry.size)} · ${entry.path}`;
+
+    const pick = $('lightbox-pick');
+    const sync = () => {
+      const on = state.picked.has(entry.path);
+      pick.textContent = on ? t('deselectThis') : t('selectThis');
+      pick.classList.toggle('btn-primary', !on);
+      pick.classList.toggle('btn-ghost', on);
+    };
+    pick.onclick = () => {
+      togglePick(entry, !state.picked.has(entry.path));
+      sync();
+      renderBrowser();
+    };
+    sync();
+
+    $('lightbox-open').onclick = () => window.open(rawURL(entry.path), '_blank', 'noopener');
+    box.hidden = false;
+  }
+
+  function closeLightbox() {
+    $('lightbox').hidden = true;
+    $('lightbox-body').innerHTML = '';
   }
 
   function togglePick(entry, on) {
@@ -1307,6 +1550,17 @@
     $('tab-upload').addEventListener('click', () => setSource('upload'));
     $('browser-refresh').addEventListener('click', () => loadDir(state.browserPath));
 
+    $('view-list').addEventListener('click', () => setView('list'));
+    $('view-grid').addEventListener('click', () => setView('grid'));
+    $('type-filter').addEventListener('change', (e) => {
+      state.typeFilter = e.target.value;
+      renderBrowser();
+    });
+    $('lightbox-close').addEventListener('click', closeLightbox);
+    $('lightbox').addEventListener('click', (e) => {
+      if (e.target === $('lightbox')) closeLightbox();
+    });
+
     const dropzone = $('dropzone');
     dropzone.addEventListener('click', () => $('file-input').click());
     dropzone.addEventListener('keydown', (e) => {
@@ -1420,6 +1674,7 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (!$('lightbox').hidden) { closeLightbox(); return; }
         $('server-modal').hidden = true;
         if (!$('progress-layer').hidden) $('btn-cancel').click();
       }
@@ -1526,6 +1781,13 @@
     syncOptions();
     renderPicked();
     renderRunButton();
+    // 记住上次用的视图：看图的人不希望每次进来都切一次
+    try {
+      const savedView = localStorage.getItem('yc7zip-view');
+      if (savedView === 'grid' || savedView === 'list') state.view = savedView;
+    } catch { /* 隐私模式 */ }
+    $('view-list').classList.toggle('is-active', state.view === 'list');
+    $('view-grid').classList.toggle('is-active', state.view === 'grid');
     checkHealth().then(openFromQuery);
     setInterval(checkHealth, 60000);
   }

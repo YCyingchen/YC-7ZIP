@@ -1,6 +1,7 @@
 # Local secrets & scratch — never commit
 .env.local
 .env
+!.env.example
 *.pem
 *.key
 
@@ -11,6 +12,10 @@ build/
 *.fpk
 *.tar.gz
 *.zip
+
+# docker compose 的默认挂载目录
+/data/
+/share/
 
 # Go
 /vendor/

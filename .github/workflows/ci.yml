@@ -57,16 +57,10 @@ jobs:
       - name: 校验版本号与 fpk 源文件
         run: |
           set -eu
-          sh deploy/version.sh check
+          # check 会同时校验 VERSION 格式与 manifest 的一致性
+          python3 tools/version.py check
 
-          # manifest 里的版本必须和 VERSION 换算结果一致，否则装出来的应用版本对不上
-          v=$(sh deploy/version.sh show)
-          want=$(sh deploy/version.sh fpk)
-          m=$(grep -E '^version' deploy/fpk/manifest | awk -F'=' '{gsub(/ /,"",$2); print $2}')
-          if [ "$want" != "$m" ]; then
-            echo "deploy/fpk/manifest($m) 应为 $want（由 VERSION $v 换算）" >&2
-            exit 1
-          fi
+          v=$(python3 tools/version.py show)
 
           # compose 里的镜像标签也要跟着版本走
           if ! grep -q "ycyingchen/yc-7zip:$v" deploy/fpk/app/docker/docker-compose.yaml; then

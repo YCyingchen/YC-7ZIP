@@ -125,6 +125,22 @@ async function browse(page, dir) {
     const summary = await page.textContent('#result-summary');
     check('结果面板出现', summary.length > 0, summary);
 
+    // 顶栏常驻任务指示：任务结束后也要留着，点一下能回到结果
+    const pill = await page.evaluate(() => {
+      const el = document.querySelector('#task-pill');
+      return el && !el.hidden ? { state: el.dataset.state, text: el.textContent.trim() } : null;
+    });
+    check('任务结束后顶栏仍有指示', !!pill, JSON.stringify(pill));
+    check('指示器为完成态', !!pill && pill.state === 'done', JSON.stringify(pill));
+    check('指示器有可读文案', !!pill && pill.text.length > 0, JSON.stringify(pill));
+    await page.click('#task-pill');
+    await page.waitForTimeout(400);
+    const backToResult = await page.evaluate(() => {
+      const r = document.querySelector('#result-panel').getBoundingClientRect();
+      return r.top < window.innerHeight && r.bottom > 0;
+    });
+    check('点击指示器能回到结果面板', backToResult);
+
     const listedRest = await page.locator('#result-list li').count();
     check('结果列出写出的分卷', listedRest >= 2, `条目 ${listedRest}`);
     check('结果里没有下载按钮（写盘模式）', await page.isHidden('#btn-download-all'));

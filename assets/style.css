@@ -191,7 +191,11 @@ a { color: var(--accent); }
 #task-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 560px) {
-  .task-pill { max-width: 130px; }
+  /* 顶栏挤了状态、任务、仓库、设置、主题、语言六项，390px 放不下。
+     允许换行，而不是把内容挤出视口——横向滚动条在小屏上最难用。 */
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .task-pill { max-width: 120px; }
 }
 
 @keyframes pulse { 50% { opacity: .35; } }

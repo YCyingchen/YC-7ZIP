@@ -1,0 +1,17 @@
+[
+  {
+    "stepTitle": "选择要操作的目录",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "YC-7ZIP 只在这份清单里的目录内读写文件——这就是它的安全边界。填 NAS 上的真实路径，多个用逗号分隔，例如 /vol1/1000,/vol2/1000/下载；想放开整个存储卷就填 /vol1。留空表示只放开 /vol1。装好之后还能在「应用中心 → YC-7ZIP → 应用设置」里改。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_allow_roots",
+        "label": "允许读写的目录（逗号分隔）",
+        "initValue": "/vol1/1000"
+      }
+    ]
+  }
+]

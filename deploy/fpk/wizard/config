@@ -1,0 +1,17 @@
+[
+  {
+    "stepTitle": "允许读写的目录",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "YC-7ZIP 只在这份清单里的目录内读写文件，多个用逗号分隔。保存后应用会自动重启。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_allow_roots",
+        "label": "允许读写的目录（逗号分隔）",
+        "initValue": "/vol1/1000"
+      }
+    ]
+  }
+]

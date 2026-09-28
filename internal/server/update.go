@@ -811,11 +811,11 @@ func (s *Server) expectedChecksum(ctx context.Context, checksumURL, name string)
 // installFromFile 校验并替换自身。
 //
 // 顺序刻意设计成"越晚破坏越好"，而且**在结构校验通过之前绝不执行文件**：
-//  1. 解到唯一的临时文件（不执行）
+//  1. 解到唯一的临时文件（不执行），并立刻设好执行位
 //  2. 结构校验：ELF + 架构匹配
 //  3. 才允许执行它问版本，并限制时间与输出量
 //  4. 版本必须是合法格式且严格高于当前
-//  5. 设好执行位、备份旧的、原子改名
+//  5. 备份旧的、原子改名
 //
 // 任何一步失败都不会动到正在运行的程序。
 func (s *Server) installFromFile(pkgPath, name, wantVersion string) (installResult, error) {
@@ -846,6 +846,14 @@ func (s *Server) installFromFile(pkgPath, name, wantVersion string) (installResu
 		return nil, err
 	}
 
+	// 执行位必须在这里就设好，不能留到改名之前：下面 probeVersion 要真的
+	// 执行这个文件，而 os.CreateTemp 建出来的是 0600。少了这一步，探测会以
+	// "fork/exec ...: permission denied" 失败——那看起来像"包里东西坏了"，
+	// 实际只是权限，会把人带到完全错误的方向去。
+	if err := os.Chmod(staged, 0o755); err != nil {
+		return nil, fmt.Errorf("设置执行位失败：%w", err)
+	}
+
 	// 结构校验：先确认它是个本架构的 ELF，再考虑执行
 	if err := checkELFArch(staged); err != nil {
 		return nil, err
@@ -863,12 +871,6 @@ func (s *Server) installFromFile(pkgPath, name, wantVersion string) (installResu
 	}
 	if reported <= s.cfg.Version {
 		return nil, fmt.Errorf("不更新：%s 不高于当前版本 %s", reported, s.cfg.Version)
-	}
-
-	// 执行位在改名之前设好：改名后再 chmod 也会失败的话，
-	// 就已经把程序换成了一份不可执行的，那才是真的把服务弄坏。
-	if err := os.Chmod(staged, 0o755); err != nil {
-		return nil, fmt.Errorf("设置执行位失败：%w", err)
 	}
 
 	backup := self + ".bak"

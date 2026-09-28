@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -222,6 +223,47 @@ def nas_run(client, command: str) -> str:
     return out
 
 
+def nas_run_stdin(client, command: str, payload: str) -> str:
+    """执行命令，并把内容写进它的标准输入。
+
+    Docker Hub 的密码走 `--password-stdin` 而不是命令行参数：命令行会出现在
+    进程列表里，同机的其他账号 `ps` 一下就能看到。
+    """
+    stdin, stdout, stderr = client.exec_command(command, timeout=None)
+    stdin.write(payload)
+    stdin.flush()
+    stdin.channel.shutdown_write()
+    out = stdout.read().decode("utf-8", "replace")
+    err = stderr.read().decode("utf-8", "replace")
+    code = stdout.channel.recv_exit_status()
+    if out.strip():
+        print(out.rstrip())
+    if err.strip():
+        print(err.rstrip(), file=sys.stderr)
+    if code != 0:
+        raise RuntimeError(f"远端命令失败（退出码 {code}）：{command}")
+    return out
+
+
+def docker_hub_login(client) -> None:
+    """在 NAS 上登录 Docker Hub，然后才开始推镜像。
+
+    这一步不能省：NAS 上的登录态会过期，而过期时的报错是
+    "denied: requested access to the resource is denied" —— 看起来像仓库权限
+    问题，实际只是没登录，很容易把人引到错误的方向去。
+    凭据取自环境或 .env.local，只在远端一次性使用，不写进任何脚本。
+    """
+    user = env_value("DOCKERHUB_USER") or "ycyingchen"
+    secret = env_value("DOCKERHUB_TOKEN") or env_value("DOCKERHUB_PASSWORD")
+    if not secret:
+        raise RuntimeError(
+            "缺少 Docker Hub 凭据：在 .env.local 里加一行 "
+            "DOCKERHUB_TOKEN=<Access Token>（Docker Hub → Account settings → "
+            "Personal access tokens，权限选 Read & Write）"
+        )
+    nas_run_stdin(client, f"docker login -u {shlex.quote(user)} --password-stdin", secret + "\n")
+
+
 def nas_put(client, local: Path, remote: str) -> None:
     sftp = client.open_sftp()
     try:
@@ -350,6 +392,7 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
         )
 
         say(f"推送到 Docker Hub（应用中心安装时会拉，必须先有）[{v} 与 {channel_tag}]")
+        docker_hub_login(client)
         nas_run(
             client,
             f"docker push ycyingchen/yc-7zip:{v} && docker push ycyingchen/yc-7zip:{channel_tag}",

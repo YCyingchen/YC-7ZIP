@@ -1,6 +1,8 @@
 package server
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -331,6 +333,71 @@ func TestOnlineUpdateAcceptsMatchingChecksum(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "gzip") {
 		t.Fatalf("应当是卡在解包而不是校验：%v", err)
+	}
+}
+
+// writeTarGz 打一个只含单个成员的 tar.gz。
+func writeTarGz(t *testing.T, path, member, src string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: member, Mode: 0o755, Size: int64(len(data)), Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 解包之后、探测版本之前必须已经有执行位。
+//
+// 这条是实跑一次在线更新才发现的：os.CreateTemp 建出来的是 0600，而
+// probeVersion 要真的执行它，于是每次都死在
+// "fork/exec ...: permission denied"——而那个报错看起来像"包里东西坏了"，
+// 会把人带到完全错误的方向去。
+//
+// 拿测试二进制自己当发布包里的 yc7zip：它是本架构的合法 ELF，被问 -version
+// 时会因为不认识这个参数而退出，正好把"执行成功但读不到版本号"（期望）与
+// "根本执行不了"（缺陷）区分开。
+func TestStagedBinaryIsExecutableBeforeProbe(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("执行位是 Linux 上的概念，这条断言在别的平台没有意义")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := filepath.Join(t.TempDir(), "yc-7zip-test.tar.gz")
+	writeTarGz(t, pkg, "yc7zip", self)
+
+	srv := newUpdateServer(t, Config{})
+	_, err = srv.installFromFile(pkg, filepath.Base(pkg), "")
+	if err == nil {
+		t.Fatal("一个不认识 -version 的程序不该被当成发布包装上")
+	}
+	if strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("解包后没有执行位，探测阶段就失败了：%v", err)
+	}
+	if !strings.Contains(err.Error(), "执行失败") {
+		t.Fatalf("应当是执行成功但读不到版本号：%v", err)
 	}
 }
 

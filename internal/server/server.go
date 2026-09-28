@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -212,6 +213,13 @@ func (s *Server) withRecovery(next http.Handler) http.Handler {
 // ------------------------------------------------------------------- static
 
 // handleStatic serves the embedded front end with an SPA fallback.
+//
+// Assets are compiled into the binary, so their URL stays the same while their
+// content changes with every release. A long max-age therefore produces a
+// mixed-version page — a stale app.js against a fresh index.html — which shows
+// up as baffling breakage ("the buttons do nothing", "the label shows a raw
+// key"). They are served with an ETag and no-cache instead: the browser keeps a
+// copy but revalidates, and unchanged files cost a 304.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	upath := path.Clean("/" + r.URL.Path)
 	if strings.HasPrefix(upath, "/api/") {
@@ -232,21 +240,43 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "资源不存在")
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(index)
+		s.serveIndex(w, index)
 		return
 	}
 
+	if strings.HasSuffix(name, ".html") {
+		s.serveIndex(w, data)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x"`, fnv64(string(data)))
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	if ctype := mime.TypeByExtension(path.Ext(name)); ctype != "" {
 		w.Header().Set("Content-Type", ctype)
 	}
-	if strings.HasSuffix(name, ".html") {
-		w.Header().Set("Cache-Control", "no-cache")
-	} else {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-	}
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(data)
+}
+
+// serveIndex returns the shell with the version stamped onto its asset URLs.
+//
+// The query string makes each release a new URL, so a browser still holding a
+// copy cached under the old URL fetches the matching script rather than mixing
+// versions. Without it, upgrading would leave existing users broken until their
+// cache expired.
+func (s *Server) serveIndex(w http.ResponseWriter, data []byte) {
+	html := string(data)
+	stamp := "?v=" + url.QueryEscape(s.cfg.Version)
+	for _, asset := range []string{"assets/style.css", "assets/app.js", "assets/images/icon.png"} {
+		html = strings.ReplaceAll(html, `"`+asset+`"`, `"`+asset+stamp+`"`)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write([]byte(html))
 }
 
 // ----------------------------------------------------------------- utilities

@@ -92,18 +92,24 @@ def cmd_set(_) -> int:
     else:
         print(f"当前描述：{before or '(空)'}")
 
-    call("PUT", f"/repos/{REPO}", {"description": DESCRIPTION})
+    # 注意是 PATCH 不是 PUT：对 /repos/{owner}/{repo} 发 PUT 会得到 404，
+    # 看起来像权限不足，其实是没有这个路由。
+    call("PATCH", f"/repos/{REPO}", {"description": DESCRIPTION})
     print(f"\n已写入描述（{len(DESCRIPTION)} 字符）：{DESCRIPTION}")
 
     call("PUT", f"/repos/{REPO}/topics", {"names": TOPICS})
     print(f"已写入 Topics：{', '.join(TOPICS)}")
 
-    after = call("GET", f"/repos/{REPO}").get("description") or ""
+    repo = call("GET", f"/repos/{REPO}")
+    after = repo.get("description") or ""
     ok = after == DESCRIPTION
     print(f"\n回读校验：{'一致 ✅' if ok else '不一致 ❌'}")
     if not ok:
         print(f"  期望：{DESCRIPTION}")
         print(f"  实际：{after}")
+    if "?" in after:
+        print("  仍然含问号，编码问题没解决")
+        return 1
     return 0 if ok else 1
 
 

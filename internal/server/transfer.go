@@ -310,6 +310,65 @@ type browseEntry struct {
 	Size  int64  `json:"size"`
 }
 
+// isInternalEntry 判断一个条目是不是"系统的"，即飞牛/Linux 自己的目录而不是
+// 用户的文件。这类目录列出来只会让人在压缩包之间找路时踩进系统目录，而这个工具
+// 在那里也没有什么可做的。
+//
+// 只影响**显示**：从文件管理器"打开方式"带 ?path= 进来的路径照旧按允许清单判定，
+// 不会被这里挡住——那是用户明确指名的路径。
+//
+// 卷根上的 docker / vm / fs 是飞牛自己的（用户自己的 docker 目录在
+// /volN/<uid>/docker 里），所以那三个只在"父目录正好是卷根"时才隐藏，
+// 免得把同名的用户目录一起藏掉。
+func isInternalEntry(name, parent string) bool {
+	if strings.HasPrefix(name, "@") {
+		return true
+	}
+	switch name {
+	case "lost+found", "thumb", "mediasrv.transcode", "appcenter-downloads":
+		return true
+	}
+	if isVolumeRoot(parent) {
+		switch name {
+		case "docker", "vm", "fs":
+			return true
+		}
+	}
+	// 文件系统根：NAS 上是 "/"，开发机上跑则是 "C:\" 这类，两种都要认
+	if parent == string(os.PathSeparator) || parent == "/" {
+		return systemRootDirs[name]
+	}
+	return false
+}
+
+// systemRootDirs 是根目录下属于操作系统自己的那些目录。
+//
+// 按名字列而不是"根目录下只留 vol*"：容器部署里应用的根就是这个容器，
+// /share、/data 这类挂载点在根下，一刀切成 vol* 会把它们也藏起来。
+var systemRootDirs = map[string]bool{
+	"bin": true, "boot": true, "dev": true, "etc": true, "fs": true, "home": true,
+	"lib": true, "lib32": true, "lib64": true, "lost+found": true, "media": true,
+	"mnt": true, "opt": true, "proc": true, "root": true, "run": true, "sbin": true,
+	"srv": true, "sys": true, "tmp": true, "usr": true, "var": true,
+}
+
+// isVolumeRoot 判断某个目录是不是飞牛的卷根（/vol1、/vol2 …）。
+func isVolumeRoot(path string) bool {
+	if !strings.HasPrefix(path, "/vol") {
+		return false
+	}
+	rest := path[len("/vol"):]
+	if rest == "" {
+		return false
+	}
+	for _, ch := range rest {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // handleBrowse powers the optional "compress files already on the server"
 // flow. It is inert unless the operator configured at least one allowed root.
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
@@ -368,6 +427,10 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
+		// 系统目录不列出来（权限照旧：这里只是"看不见"）
+		if isInternalEntry(name, abs) {
+			continue
+		}
 		info, err := de.Info()
 		if err != nil {
 			continue
@@ -395,6 +458,9 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		"enabled": true,
 		"path":    abs,
 		"parent":  parent,
+		// 目录这一层也要带上根列表：界面要靠它决定面包屑从哪一段开始，
+		// 以及在根这一层能不能给出"回到可用目录"的入口（有多个根时换目录用）。
+		"roots":   s.browseRoots(),
 		"entries": entries,
 	})
 }

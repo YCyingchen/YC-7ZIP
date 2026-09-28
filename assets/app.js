@@ -605,7 +605,9 @@
     const rootCrumb = document.createElement('button');
     rootCrumb.type = 'button';
     rootCrumb.className = 'crumb crumb-btn';
-    rootCrumb.textContent = '/' + (parts[0] || '');
+    // 这一跳的标签要写完整的根路径：允许的根常常在 /vol1/1000 这种深度，
+    // 只写第一段（/vol1）既不是当前位置，也不在允许清单里
+    rootCrumb.textContent = '/' + parts.slice(0, startIdx).join('/');
     rootCrumb.addEventListener('click', () => loadDir('/' + parts.slice(0, startIdx).join('/')));
     host.appendChild(rootCrumb);
 
@@ -625,12 +627,20 @@
       host.appendChild(el);
     });
 
-    if (parent) {
+    // 返回上一层的入口。
+    //
+    // 允许清单里有多个目录时，从其中一个"上不去"——它的父目录不在清单里，
+    // 服务端也不会给。但用户总得能换到另一个指定目录，所以在根这一层把入口
+    // 指向「可用目录」那一层（空路径），而不是干脆没有入口。
+    const rootPaths = (roots || []).map((r) => (typeof r === 'string' ? r : (r && r.path) || ''));
+    const atRoot = rootPaths.indexOf(path) >= 0;
+    const upTarget = parent ? parent : (atRoot && rootPaths.length > 1 ? '' : null);
+    if (upTarget !== null) {
       const up = document.createElement('button');
       up.type = 'button';
       up.className = 'crumb crumb-up';
-      up.textContent = '↑ ' + t('up');
-      up.addEventListener('click', () => loadDir(parent));
+      up.textContent = '↑ ' + t(parent ? 'up' : 'rootLabel');
+      up.addEventListener('click', () => loadDir(upTarget));
       host.appendChild(up);
     }
   }

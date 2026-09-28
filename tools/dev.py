@@ -451,12 +451,13 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
             client,
             "appcenter-cli uninstall yc7zip 2>&1 | tr '\\r' '\\n' | grep -E 'success|Error' || true",
         )
-        # 允许读写的目录＝应用的边界。这里传的是**这台 NAS 自己用的**值：放开全部
-        # 存储卷与根，也就是「NAS 文件」能像以前那样看全盘。
-        # 上架给别人装的默认值不在这里——那是 fpk 里 wizard/install 的事
-        # （默认 /vol1/1000，留空则 /vol1），两者刻意分开：本机图方便，发行包图安全。
-        # 想临时收窄本机可以用 YC7ZIP_FPK_ALLOW_ROOTS 覆盖。
-        allow_roots = env_value("YC7ZIP_FPK_ALLOW_ROOTS") or "/vol1,/vol2,/vol3,/vol4,/vol5,/"
+        # 这份清单同时决定两件事：能读写什么、以及浏览器从哪些目录开始显示。
+        # 所以别写成 "/vol1,/vol2,…,/"——那样界面会从根目录开始，把飞牛自己的
+        # 目录（@appcenter、@appdata、docker、thumb…）一起摊在用户面前。
+        # 上架给别人装的默认值不在这里，那是 fpk 里 wizard/install 的事。
+        # 想临时改本机用 YC7ZIP_FPK_ALLOW_ROOTS 覆盖，或者装好之后到
+        # 「应用中心 → 应用设置」里改。
+        allow_roots = env_value("YC7ZIP_FPK_ALLOW_ROOTS") or "/vol1/1000,/vol5/1000/空间4"
         nas_run(
             client,
             f"printf 'wizard_app_port=8090\\nwizard_allow_roots={allow_roots}\\n' "

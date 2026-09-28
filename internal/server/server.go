@@ -146,14 +146,23 @@ func (s *Server) Handler() http.Handler {
 
 // withCSRFGuard rejects cross-origin state changes.
 //
-// 这套接口用可选的 Basic 认证，而 multipart 表单属于 CORS 的"简单请求"：
+// 这层检查是为 Basic 认证准备的：multipart 表单属于 CORS 的"简单请求"：
 // 浏览器会把缓存的 Basic 凭据自动带上，且不触发预检。于是"管理员访问了一个
 // 恶意页面"就等于把更新接口交了出去——而更新接口能替换可执行文件。
-// JSON 接口不受影响（自定义 Content-Type 会触发预检），出问题的恰恰是
-// 上传发布包这类 multipart 端点，所以这道检查加在方法上而不是内容类型上。
 //
-// 判据是 Origin 与 Host 是否同源；飞牛网关下应用与文件管理器同源，
-// 同源 iframe 因此不受影响。
+// 判据按顺序：
+//  1. 有 Sec-Fetch-Site 就只认它。这个头由浏览器自己填，页面脚本改不了，
+//     也不受反向代理影响，是这里最可靠的一手信息。
+//  2. 没有 Origin：非浏览器客户端（curl、脚本），放行。
+//  3. Origin 与本请求同源（认 Host，也认正经代理会带的 X-Forwarded-Host）。
+//  4. 应用自己没配 Basic 认证：这层检查防的就是"浏览器自动带上的缓存凭据"，
+//     没有凭据就没有这个威胁；飞牛应用包部署正属于这种（访问由网关的登录态管）。
+//  5. 其余一律拒绝，并把现场写进日志。
+//
+// 第 1 步之前是用 Origin 与 Host 硬比的，结果在网关后面必然误判：
+// 网关会把 Host 改写成自己的名字（飞牛的应用网关就是），而 Origin 仍是浏览器
+// 看到的那个地址，于是网关里"点任何按钮都报拒绝跨站请求"。第 5 步的日志就是为了
+// 让这类误判一眼能看清——当时只回了一句 Origin，Host 是什么全靠猜。
 func (s *Server) withCSRFGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -165,20 +174,54 @@ func (s *Server) withCSRFGuard(next http.Handler) http.Handler {
 		if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
 			switch site {
 			case "same-origin", "same-site", "none":
+				next.ServeHTTP(w, r)
 			default:
-				writeError(w, http.StatusForbidden, "拒绝跨站请求")
-				return
+				s.rejectCSRF(w, r, "Sec-Fetch-Site="+site)
 			}
+			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" {
-			parsed, err := url.Parse(origin)
-			if err != nil || !strings.EqualFold(parsed.Host, r.Host) {
-				writeError(w, http.StatusForbidden, "拒绝跨站请求："+origin)
-				return
-			}
+
+		origin := r.Header.Get("Origin")
+		if origin == "" || sameOrigin(origin, r) || s.cfg.Auth == "" {
+			next.ServeHTTP(w, r)
+			return
 		}
-		next.ServeHTTP(w, r)
+		s.rejectCSRF(w, r, "Origin="+origin)
 	})
+}
+
+// sameOrigin 判断 Origin 是否与本请求同源。
+//
+// 还认 X-Forwarded-Host：正经的反向代理会把原始 Host 放在那里。
+func sameOrigin(origin string, r *http.Request) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	if strings.EqualFold(parsed.Host, r.Host) {
+		return true
+	}
+	// 可能是逗号分隔的一串（多级代理），取第一个
+	if fwd := r.Header.Get("X-Forwarded-Host"); fwd != "" {
+		if first := strings.TrimSpace(strings.Split(fwd, ",")[0]); first != "" {
+			return strings.EqualFold(parsed.Host, first)
+		}
+	}
+	return false
+}
+
+// rejectCSRF 拒绝一次跨站请求，并把判断依据留在日志里。
+func (s *Server) rejectCSRF(w http.ResponseWriter, r *http.Request, why string) {
+	s.log.Warn("拒绝跨站请求",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"reason", why,
+		"host", r.Host,
+		"origin", r.Header.Get("Origin"),
+		"forwarded_host", r.Header.Get("X-Forwarded-Host"),
+		"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
+	)
+	writeError(w, http.StatusForbidden, "拒绝跨站请求："+why)
 }
 
 // healthPath is exempt from both the auth gate and the base-path strip, so a

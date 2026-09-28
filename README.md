@@ -173,28 +173,34 @@ docker run -d --name yc-7zip \
 
 ### 2. 飞牛 fnOS 应用包（fpk）
 
+**不需要 Docker。** 包里自带 `yc7zip` 与官方 `7-Zip`（x86_64 与 arm64 各一份，
+安装时按 `uname -m` 现选），由应用包自己拉起进程，数据落在应用的 `TRIM_PKGVAR`。
+
+直接下现成的包：Release 里的 `yc-7zip-<版本>.fpk`，或下载页上的 `yc7zip.fpk`。
+然后到「应用中心 → 手动安装」选中它。
+
+自己从源码打包（在 NAS 上，已预装 `fnpack`）：
+
 ```bash
-# 在飞牛 NAS 上（已预装 fnpack）
 git clone https://github.com/YCyingchen/YC-7ZIP.git
 cd YC-7ZIP
-fnpack build -d deploy/fpk          # 生成 deploy/fpk/yc7zip.fpk
+# fpk 源码里不含二进制，先按架构补上（二进制在 Release 的 linux-<arch> 包里）
+install -Dm755 <解开的 yc7zip> deploy/fpk/app/bin/amd64/yc7zip
+install -Dm755 <解开的 7zz>    deploy/fpk/app/bin/amd64/7zz
+fnpack build -d deploy/fpk               # 生成 deploy/fpk/yc7zip.fpk
 ```
-
-然后到「应用中心 → 手动安装」选中这个 `.fpk`。
 
 装好后会有两个入口：
 
 - 桌面/应用列表里的 **YC-7ZIP** 图标；
 - 文件管理器里对压缩包右键 →「打开方式」→ **YC-7ZIP 压缩解压**。
 
-> ⚠️ **镜像必须先存在于仓库**。飞牛的应用中心在安装 fpk 时会去拉 compose 里写明的镜像，
-> 镜像不存在就会安装失败并回滚。所以自己改过代码后，顺序是：
-> `docker build` → `docker push` → 再 `fnpack build` + 安装。
-
 > 端口只绑在 `127.0.0.1`：飞牛的应用网关是通过 unix socket 进来的，
-> 不需要把端口暴露到局域网。想直接从别的机器访问端口，把 compose 里
-> `"127.0.0.1:${wizard_app_port}:8080"` 的 `127.0.0.1:` 去掉，
-> 并务必同时打开 `YC7ZIP_AUTH`。
+> 不需要把端口暴露到局域网。想直接从别的机器访问端口，给 `cmd/main` 里的
+> `-addr` 去掉 `127.0.0.1` 前缀，并务必同时打开 `YC7ZIP_AUTH`。
+
+> 应用包以 **root** 运行：它的用途就是读写 NAS 上任意位置的压缩包（同类的 Lucky
+> 也是这么做的）。访问仍然要经过飞牛网关的登录态。
 
 > 右键菜单的实现方式是飞牛官方支持的**文件类型关联**（`app/ui/config` 的
 > `fileTypes`）。飞牛不支持往右键菜单里塞任意菜单项，所以入口在「打开方式」子菜单里。

@@ -1,29 +1,118 @@
 #!/bin/bash
-# YC-7ZIP 生命周期入口。start/stop 交给应用中心处理 Docker，这里只负责状态查询。
+# YC-7ZIP 生命周期入口。
+#
+# 原生形态（不依赖 Docker）：start / stop / status 都得自己实现。Docker 形态下
+# 这些由应用中心驱动 compose，所以旧版这里只是个空壳；换成原生之后必须真的把
+# 进程拉起来，否则应用中心看到的就是"装了却一直没运行"。
+#
+# 两种架构的二进制都带在 app/bin/<arch>/ 下，按 uname -m 现选：一个 fpk 装遍
+# x86_64 与 arm64，省得让用户先分辨自己该下哪个包。
 
-FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+APP="${TRIM_APPDEST}"
+VAR="${TRIM_PKGVAR}"
+PID_FILE="${VAR}/app.pid"
+LOG_FILE="${VAR}/info.log"
+PORT="${wizard_app_port:-8090}"
 
-container_name () {
-    [ -f "$FILE_PATH" ] && grep "container_name" "$FILE_PATH" | awk -F ':' '{print $2}' | xargs
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "${LOG_FILE}"
 }
 
-is_running () {
-    name=$(container_name)
-    [ -z "$name" ] && return 1
-    docker inspect "$name" 2>/dev/null | grep -q '"Status": "running",'
+arch_dir() {
+    case "$(uname -m)" in
+        x86_64 | amd64) echo amd64 ;;
+        aarch64 | arm64) echo arm64 ;;
+        *) echo "" ;;
+    esac
+}
+
+# 运行时目录：TRIM_PKGVAR 在升级时会保留，界面设置与任务工作区都在里面。
+ensure_dirs() {
+    mkdir -p "${VAR}/data" 2>/dev/null
+}
+
+# 判定"在跑"要用 PID 文件 + /proc 双重校验，不能只看 kill -0：进程退出后
+# PID 可能被系统复用，那时 kill -0 会谎报"还在跑"，于是 stop 会去杀一个
+# 毫不相干的进程。
+running_pid() {
+    [ -r "${PID_FILE}" ] || return 1
+    local pid
+    pid=$(head -n 1 "${PID_FILE}" 2>/dev/null | tr -d '[:space:]')
+    [ -n "${pid}" ] || return 1
+    [ -r "/proc/${pid}/cmdline" ] || return 1
+    tr '\0' ' ' < "/proc/${pid}/cmdline" | grep -q "yc7zip" || return 1
+    printf '%s' "${pid}"
+}
+
+start() {
+    local pid
+    if pid=$(running_pid); then
+        log "已在运行（pid=${pid}），无需重复启动"
+        return 0
+    fi
+
+    local arch
+    arch=$(arch_dir)
+    if [ -z "${arch}" ]; then
+        ensure_dirs
+        log "不支持的架构：$(uname -m)，包里只有 amd64 与 arm64"
+        return 1
+    fi
+    local bin="${APP}/bin/${arch}/yc7zip"
+    if [ ! -x "${bin}" ]; then
+        ensure_dirs
+        log "找不到可执行的 ${bin}，这个包可能不完整"
+        return 1
+    fi
+
+    ensure_dirs
+    log "启动 ${bin} -addr 127.0.0.1:${PORT}"
+    # 只绑本机：飞牛的应用网关走下面的 unix socket 进来。磁盘权限放开的同时，
+    # 访问仍然要经过飞牛的登录态。
+    YC7ZIP_7Z="${APP}/bin/${arch}/7zz" \
+        YC7ZIP_SOCKET="${APP}/app.sock" \
+        YC7ZIP_BASE_PATH="/app/yc7zip" \
+        YC7ZIP_DATA="${VAR}/data" \
+        YC7ZIP_ALLOW_ROOTS="/vol1,/vol2,/vol3,/vol4,/vol5,/" \
+        nohup "${bin}" -addr "127.0.0.1:${PORT}" >>"${LOG_FILE}" 2>&1 </dev/null &
+    # nohup 会把自己替换成目标程序，所以 $! 就是程序自己的 pid
+    printf '%s' "$!" >"${PID_FILE}"
+    return 0
+}
+
+stop() {
+    local pid
+    if ! pid=$(running_pid); then
+        rm -f "${PID_FILE}"
+        return 0
+    fi
+
+    log "停止 pid=${pid}"
+    kill "${pid}" 2>/dev/null
+    # 程序收到 SIGTERM 会自己收尾，给它十秒
+    local i
+    for i in $(seq 1 50); do
+        [ -r "/proc/${pid}/cmdline" ] || break
+        sleep 0.2
+    done
+    if [ -r "/proc/${pid}/cmdline" ]; then
+        log "十秒内没有退出，强制结束"
+        kill -9 "${pid}" 2>/dev/null
+    fi
+    rm -f "${PID_FILE}" "${APP}/app.sock"
+    return 0
 }
 
 case $1 in
 start)
-    # Docker 应用由应用中心负责启动
-    exit 0
+    start
     ;;
 stop)
-    exit 0
+    stop
     ;;
 status)
-    # 0 = 运行中，3 = 未运行
-    if is_running; then
+    # 0 = 运行中，3 = 未运行。端口通不通由 manifest 的 checkport 负责。
+    if running_pid >/dev/null; then
         exit 0
     else
         exit 3

@@ -25,6 +25,29 @@ function check(name, ok, detail = '') {
 }
 function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
 
+// 点「检查更新」并等它真的跑完。
+//
+// 不能只等"结果框里有字"：面板一打开就会先把服务端缓存的上一轮结果画出来，
+// 那个条件立刻成立，于是读到的是上一轮的文字（表现为"渠道少了一条"这种假失败）。
+// 先等按钮进入"检查中"，再等它恢复，才是真的完成了这一轮。
+async function checkAndWait(page) {
+  await page.click('#btn-update-check');
+  await page.waitForFunction(
+    () => {
+      const btn = document.querySelector('#btn-update-check');
+      return !!(btn && btn.disabled);
+    },
+    { timeout: 15000 }
+  );
+  await page.waitForFunction(
+    () => {
+      const btn = document.querySelector('#btn-update-check');
+      return !!(btn && !btn.disabled);
+    },
+    { timeout: 60000 }
+  );
+}
+
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -55,7 +78,14 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
     const relCount = await page.locator('#changelog-inline .release').count();
     check('渲染出多个版本', relCount >= 2, `版本数 ${relCount}`);
     const changelogText = await page.textContent('#changelog-inline');
-    check('含最新版本号', /zip2609\.002/.test(changelogText));
+    // 跟当前版本比，而不是写死一个版本号：写死的话每次升版本这条都会红，
+    // 而它真正要断言的是"更新日志与运行中的版本对得上"
+    const currentVersion = ((await page.textContent('#update-current')) || '').match(/zip\d{4}\.\d{3}/);
+    check(
+      '更新日志含当前版本号',
+      !!currentVersion && changelogText.includes(currentVersion[0]),
+      `当前版本 ${currentVersion ? currentVersion[0] : '未识别'}`
+    );
     check('含小节标题', /新增/.test(changelogText));
     const itemCount = await page.locator('#changelog-inline .release-items li').count();
     check('渲染出条目', itemCount >= 5, `条目数 ${itemCount}`);
@@ -73,14 +103,7 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
     check('选择器列出 GitHub', sources.some((o) => o.value === 'github'), JSON.stringify(sources));
     check('默认走自动', (await page.inputValue('#update-source')) === 'auto');
 
-    await page.click('#btn-update-check');
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('#update-result');
-        return el && !el.hidden && el.textContent.trim().length > 0;
-      },
-      { timeout: 45000 }
-    );
+    await checkAndWait(page);
     const updateText = await page.textContent('#update-result');
     check('检查有结果反馈', updateText.trim().length > 0, updateText.slice(0, 80));
     const kind = await page.getAttribute('#update-result', 'data-kind');
@@ -95,13 +118,8 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
 
     // 只查一条渠道：既要能强制指定，也要保证选择不会被检查结果重置回「自动」
     await page.selectOption('#update-source', 'self');
-    await page.click('#btn-update-check');
-    let selfOnly = '';
-    for (let i = 0; i < 20; i++) {
-      selfOnly = await page.textContent('#update-result');
-      if (/自建源/.test(selfOnly) && !/GitHub/.test(selfOnly)) break;
-      await page.waitForTimeout(500);
-    }
+    await checkAndWait(page);
+    const selfOnly = await page.textContent('#update-result');
     check('限定单条渠道时只报那一条', /自建源/.test(selfOnly) && !/GitHub/.test(selfOnly), selfOnly.slice(0, 140));
     check('选择未被检查结果重置', (await page.inputValue('#update-source')) === 'self');
     await page.selectOption('#update-source', 'auto');

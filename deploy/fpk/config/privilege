@@ -1,8 +1,8 @@
 {
   "defaults":
   {
-    "run-as": "package"
+    "run-as": "root"
   },
-  "username": "docker-yc7zip",
-  "groupname": "docker-yc7zip"
+  "username": "yc7zip",
+  "groupname": "yc7zip"
 }

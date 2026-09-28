@@ -186,8 +186,32 @@ def cmd_dist(_: argparse.Namespace) -> int:
             (stage / script).chmod(0o755)
         make_tarball(stage, pkg / f"{stage.name}.tar.gz")
 
+    # fpk 源码包只放打包骨架，不放二进制——它叫"源码"。但要写清二进制从哪儿来，
+    # 否则解开只会看到 manifest 与几个空目录，无从下手。
     fpk_src = pkg / "fpk-src"
-    shutil.copytree(ROOT / "deploy" / "fpk", fpk_src)
+    shutil.copytree(ROOT / "deploy" / "fpk", fpk_src, ignore=shutil.ignore_patterns("bin"))
+    (fpk_src / "README.md").write_text(
+        f"""# YC-7ZIP 飞牛应用包（源码）
+
+这里是 `fnpack` 的输入。**它不含二进制**，打包之前要先补上：
+
+    app/bin/amd64/yc7zip    app/bin/amd64/7zz
+    app/bin/arm64/yc7zip    app/bin/arm64/7zz
+
+两种架构的 `yc7zip` 与官方 `7zz` 都在同一条 Release 的
+`yc-7zip-{v}-linux-<arch>.tar.gz` 里（解开就是 `yc7zip` 与 `7zz` 两个文件）。
+`cmd/main` 会按 `uname -m` 现选架构，所以一个 fpk 同时支持 x86_64 与 arm64；
+只做本机架构的话放对应那一层就够，但 `manifest` 里的 `arch` 要跟着改。
+
+然后打包：
+
+    fnpack build -d .
+
+这个应用**不依赖 Docker**：装好后由 `cmd/main` 直接拉起 `app/bin/<arch>/yc7zip`。
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
     make_tarball(fpk_src, pkg / f"yc-7zip-{v}-fpk-src.tar.gz")
 
     for item in sorted(pkg.glob("*.tar.gz")):
@@ -377,8 +401,24 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
             sftp.close()
         print("  deploy/fpk -> /root/yc7zip-build/fpk")
 
-        # 7-Zip 的 Linux 版在 NAS 上解出来（那边有 tar/xz）
-        nas_put(client, ROOT / "dist" / "7z-amd64" / "7zz" if (ROOT / "dist" / "7z-amd64" / "7zz").is_file() else fetch_sevenzip("amd64"), "/root/yc7zip-build/dist/amd64/7zz")
+        # 原生 fpk 得自己带二进制：不再从仓库拉镜像，包里没有东西就没得跑。
+        # 两种架构都放进去，由 cmd/main 按 uname -m 现选，用户不必分辨该下哪个包。
+        say("组装 fpk 内的二进制与官方 7-Zip")
+        nas_run(
+            client,
+            "mkdir -p /root/yc7zip-build/fpk/app/bin/amd64 /root/yc7zip-build/fpk/app/bin/arm64",
+        )
+        for arch in ("amd64", "arm64"):
+            nas_put(client, DIST / arch / "yc7zip", f"/root/yc7zip-build/fpk/app/bin/{arch}/yc7zip")
+            nas_put(client, fetch_sevenzip(arch), f"/root/yc7zip-build/fpk/app/bin/{arch}/7zz")
+        nas_run(
+            client,
+            "chmod +x /root/yc7zip-build/fpk/app/bin/*/* && "
+            "ls -la /root/yc7zip-build/fpk/app/bin/amd64 /root/yc7zip-build/fpk/app/bin/arm64",
+        )
+
+        # Docker 镜像照旧构建推送：compose 部署那条路走的就是这个镜像。
+        nas_put(client, fetch_sevenzip("amd64"), "/root/yc7zip-build/dist/amd64/7zz")
 
         say("在 NAS 上构建镜像")
         # 版本标签永远打且不可变；通道标签由 CHANNEL 决定，
@@ -391,7 +431,7 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
             f"-t ycyingchen/yc-7zip:{v} -t ycyingchen/yc-7zip:{channel_tag} .",
         )
 
-        say(f"推送到 Docker Hub（应用中心安装时会拉，必须先有）[{v} 与 {channel_tag}]")
+        say(f"推送到 Docker Hub（给 compose 部署的用户）[{v} 与 {channel_tag}]")
         docker_hub_login(client)
         nas_run(
             client,
@@ -416,12 +456,25 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
         say("等待健康检查")
         import time
 
+        # 原生应用没有容器可以 inspect：直接问它自己的健康接口。
+        # 打 127.0.0.1:8090 —— 这正是应用网关看到的那个地址。
+        healthy = False
         for _ in range(12):
             time.sleep(5)
-            status = nas_run(client, "docker inspect yc7zip --format '{{.State.Health.Status}}' 2>/dev/null || echo none")
-            if "healthy" in status:
+            code = nas_run(
+                client,
+                "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8090/api/health || true",
+            ).strip()
+            if code == "200":
+                healthy = True
                 break
-        nas_run(client, "docker ps --filter name=yc7zip --format '{{.Names}} | {{.Status}}'")
+        if healthy:
+            print("  ✅ /api/health 200")
+        else:
+            print("  ⚠ 健康检查没通过", file=sys.stderr)
+        nas_run(client, "appcenter-cli list 2>&1 | tr '\\r' '\\n' | grep -i yc7zip || true")
+        # 日志用 /var/apps/<app>/var 这个软链接取，别写死 /volN —— 应用装在哪个卷上是由用户选的
+        nas_run(client, "tail -8 /var/apps/yc7zip/var/info.log 2>/dev/null || true")
     finally:
         client.close()
     return 0

@@ -242,7 +242,7 @@ docker compose pull && docker compose up -d</pre>
       对压缩包右键 →「打开方式」→ <b>YC-7ZIP 压缩解压</b>。
     </p>
 <pre># 到「应用中心 → 手动安装」选择下载好的 .fpk 文件
-# 注意：应用中心安装时会去拉 compose 里的镜像，镜像不在仓库会安装失败</pre>
+# 不需要 Docker：包里自带 yc7zip 与官方 7-Zip（x86_64 与 arm64 各一份）</pre>
     <div class="row">
       <a class="btn btn-primary" href="yc7zip.fpk" download>下载 yc7zip.fpk</a>
       <a class="btn btn-ghost" href="yc-7zip-fpk-src.tar.gz" download>fpk 源码</a>
@@ -250,7 +250,8 @@ docker compose pull && docker compose up -d</pre>
     <div class="note">
       <b>安装前必读：</b>fnpack 打包的 manifest 只接受 semver，所以 fpk 内的版本号是
       <code><!-- FPK_VERSION --></code>（对应项目版本 <code><!-- VERSION --></code>）。
-      另外，自己改过代码后必须先 <code>docker push</code> 再装 fpk，否则应用中心拉不到镜像会回滚。
+      fpk 与 Docker 无关，装好后由应用包自己拉起进程，数据放在应用的
+      <code>TRIM_PKGVAR</code>（升级会保留）。
     </div>
   </div>
 

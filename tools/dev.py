@@ -446,10 +446,12 @@ def cmd_nas_app(_: argparse.Namespace) -> int:
             client,
             "appcenter-cli uninstall yc7zip 2>&1 | tr '\\r' '\\n' | grep -E 'success|Error' || true",
         )
-        # 允许读写的目录＝这个应用的安全边界。别人在自己的机器上装的时候，
-        # 这一步由安装向导填（wizard/install 里那个字段）；这里只是给
-        # 「在这台 NAS 上重装」传一份等价的值，免得上架用的默认值把本机的用例挤掉。
-        allow_roots = env_value("YC7ZIP_FPK_ALLOW_ROOTS") or "/vol1/1000,/vol5/1000/空间4"
+        # 允许读写的目录＝应用的边界。这里传的是**这台 NAS 自己用的**值：放开全部
+        # 存储卷与根，也就是「NAS 文件」能像以前那样看全盘。
+        # 上架给别人装的默认值不在这里——那是 fpk 里 wizard/install 的事
+        # （默认 /vol1/1000，留空则 /vol1），两者刻意分开：本机图方便，发行包图安全。
+        # 想临时收窄本机可以用 YC7ZIP_FPK_ALLOW_ROOTS 覆盖。
+        allow_roots = env_value("YC7ZIP_FPK_ALLOW_ROOTS") or "/vol1,/vol2,/vol3,/vol4,/vol5,/"
         nas_run(
             client,
             f"printf 'wizard_app_port=8090\\nwizard_allow_roots={allow_roots}\\n' "

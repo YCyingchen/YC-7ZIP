@@ -216,7 +216,11 @@ func (s *Server) recordHistory(id string) {
 	default:
 		return
 	}
-	s.history.add(historyEntryFromJob(j, time.Now()))
+	entry := historyEntryFromJob(j, time.Now())
+	s.history.add(entry)
+	// 通知与历史共用这一份收尾数据：它们要说的本来就是同一件事。
+	// 发送是异步的，失败只写日志（见 notify.go 的 notifyJob）。
+	s.notifyJob(entry)
 }
 
 // historyEntryFromJob 把任务翻成一条历史。

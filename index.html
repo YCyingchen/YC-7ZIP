@@ -512,6 +512,101 @@
       </section>
 
       <section class="settings-section">
+        <h3 data-i18n="notifyTitle">通知</h3>
+        <p class="hint settings-hint" data-i18n="notifyHint">任务结束时把结果推到企业微信 / 钉钉 / 飞书 / QQ 机器人，或任意 Webhook。发送失败只写日志，不会影响任务本身。</p>
+
+        <div class="notify-triggers">
+          <label class="check">
+            <input type="checkbox" id="notify-done">
+            <span data-i18n="notifyOnDone">任务完成时</span>
+          </label>
+          <label class="check">
+            <input type="checkbox" id="notify-error">
+            <span data-i18n="notifyOnError">任务失败时</span>
+          </label>
+        </div>
+
+        <ul class="notify-list" id="notify-list"></ul>
+
+        <div class="notify-form">
+          <div class="field field-inline">
+            <label for="notify-type" data-i18n="notifyType">类型</label>
+            <select id="notify-type">
+              <option value="wecom" data-i18n="typeWecom">企业微信机器人</option>
+              <option value="dingtalk" data-i18n="typeDingtalk">钉钉机器人</option>
+              <option value="feishu" data-i18n="typeFeishu">飞书机器人</option>
+              <option value="qqbot" data-i18n="typeQQBot">QQ 官方机器人</option>
+              <option value="webhook" data-i18n="typeWebhook">通用 Webhook</option>
+            </select>
+          </div>
+
+          <div class="field field-inline">
+            <label for="notify-name" data-i18n="notifyName">名称</label>
+            <input type="text" id="notify-name" data-i18n-placeholder="notifyNamePlaceholder" placeholder="例如：家里群">
+          </div>
+
+          <div class="field field-inline" data-notify-field="url">
+            <label for="notify-url" data-i18n="notifyURL">Webhook 地址</label>
+            <input type="text" id="notify-url" data-i18n-placeholder="notifyURLPlaceholder" placeholder="https://…">
+          </div>
+
+          <div class="field field-inline" data-notify-field="header">
+            <label for="notify-header-name" data-i18n="notifyHeader">附加请求头（可选）</label>
+            <div class="notify-pair">
+              <input type="text" id="notify-header-name" placeholder="Authorization">
+              <input type="text" id="notify-header-value" data-i18n-placeholder="notifyHeaderValue" placeholder="Bearer …">
+            </div>
+          </div>
+
+          <div class="field field-inline" data-notify-field="qqbot">
+            <label for="notify-appid" data-i18n="notifyAppID">AppID</label>
+            <input type="text" id="notify-appid" autocomplete="off">
+          </div>
+
+          <div class="field field-inline" data-notify-field="qqbot">
+            <label for="notify-secret" data-i18n="notifyAppSecret">AppSecret</label>
+            <input type="password" id="notify-secret" autocomplete="new-password">
+          </div>
+
+          <div class="field field-inline" data-notify-field="qqbot">
+            <label for="notify-target-type" data-i18n="notifyTargetType">目标</label>
+            <select id="notify-target-type">
+              <option value="group" data-i18n="notifyTargetGroup">群聊</option>
+              <option value="user" data-i18n="notifyTargetUser">单聊</option>
+            </select>
+          </div>
+
+          <div class="field field-inline" data-notify-field="qqbot">
+            <label for="notify-target-id" data-i18n="notifyTargetID">目标 openid</label>
+            <input type="text" id="notify-target-id" autocomplete="off">
+          </div>
+
+          <div data-notify-field="qqbot">
+            <p class="hint settings-hint" data-i18n="notifyQQNote">扫码绑定会走官方通道创建一个可用的 QQ 机器人，并把授权交给这里；也可以自己去开放平台注册开发者、创建应用，把 AppID 与 AppSecret 填进来。绑定成功后两个值会自动填入上面的输入框。</p>
+            <div class="settings-actions">
+              <button class="btn btn-ghost" id="btn-notify-qr" type="button" data-i18n="notifyQRBind">用手机 QQ 扫码绑定</button>
+            </div>
+            <div class="notify-qr" id="notify-qr" hidden>
+              <div class="notify-qr-img" id="notify-qr-img"></div>
+              <div class="notify-qr-side">
+                <p class="notify-qr-state" id="notify-qr-state"></p>
+                <a class="link-btn" id="notify-qr-link" href="#" target="_blank" rel="noopener" data-i18n="notifyQROpen">打不开二维码？点这里</a>
+                <button class="link-btn" id="btn-notify-qr-again" type="button" data-i18n="notifyQRAgain">重新生成</button>
+              </div>
+            </div>
+            <p class="hint settings-hint"><a class="notify-doc" id="notify-qq-doc" href="https://bot.q.qq.com/wiki/" target="_blank" rel="noopener" data-i18n="notifyQQDoc">QQ 机器人开放平台文档</a></p>
+          </div>
+
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="btn-notify-save" type="button" data-i18n="notifyAdd">添加渠道</button>
+            <button class="btn btn-ghost" id="btn-notify-test-form" type="button" data-i18n="notifyTest">发送测试</button>
+            <button class="btn btn-ghost" id="btn-notify-cancel" type="button" hidden data-i18n="notifyCancelEdit">取消编辑</button>
+          </div>
+          <div class="update-result" id="notify-form-result" hidden></div>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3 data-i18n="changelogTitle">更新日志</h3>
         <div class="changelog-inline" id="changelog-inline"></div>
       </section>

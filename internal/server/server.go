@@ -88,6 +88,10 @@ type Server struct {
 	uiSettings *uiStore
 	// history 记录已经结束的压缩/解压，供界面回看。
 	history *historyStore
+	// notifications 保存任务结束时要推送到哪些渠道。
+	notifications *notifyStore
+	// qqBind 管着 QQ 官方机器人扫码绑定的会话（见 qqbot_bind.go）。
+	qqBind *qqBindStore
 }
 
 // New builds a server. webFS must contain index.html at its root.
@@ -96,17 +100,19 @@ func New(cfg Config, eng *engine.Engine, jobs *job.Manager, webFS fs.FS) *Server
 		cfg.Logger = slog.Default()
 	}
 	s := &Server{
-		cfg:        cfg,
-		engine:     eng,
-		jobs:       jobs,
-		log:        cfg.Logger,
-		webFS:      webFS,
-		mux:        http.NewServeMux(),
-		start:      time.Now(),
-		updates:    &updateState{},
-		githubAPI:  "https://api.github.com",
-		uiSettings: newUIStore(cfg.DataDir),
-		history:    newHistoryStore(cfg.DataDir),
+		cfg:           cfg,
+		engine:        eng,
+		jobs:          jobs,
+		log:           cfg.Logger,
+		webFS:         webFS,
+		mux:           http.NewServeMux(),
+		start:         time.Now(),
+		updates:       &updateState{},
+		githubAPI:     "https://api.github.com",
+		uiSettings:    newUIStore(cfg.DataDir),
+		history:       newHistoryStore(cfg.DataDir),
+		notifications: newNotifyStore(cfg.DataDir),
+		qqBind:        newQQBindStore(),
 	}
 	s.sources = s.resolveSources()
 	s.routes()
@@ -300,6 +306,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/history/{id}", s.handleHistoryDelete)
 	s.mux.HandleFunc("GET /api/ui-settings", s.handleUISettingsGet)
 	s.mux.HandleFunc("PUT /api/ui-settings", s.handleUISettingsPut)
+	// 通知：渠道配置 + 试发。任务结束时按这里的开关推送（见 notify.go）。
+	s.mux.HandleFunc("GET /api/notifications", s.handleNotifyGet)
+	s.mux.HandleFunc("PUT /api/notifications", s.handleNotifyPut)
+	s.mux.HandleFunc("POST /api/notifications/test", s.handleNotifyTest)
+	// QQ 机器人扫码绑定：浏览器只跟这两个接口打交道，与官方的往返在服务端完成。
+	s.mux.HandleFunc("POST /api/notifications/qq/start", s.handleQQBindStart)
+	s.mux.HandleFunc("GET /api/notifications/qq/poll", s.handleQQBindPoll)
+
 	s.mux.HandleFunc("GET /api/wallpaper", s.handleWallpaperGet)
 	s.mux.HandleFunc("POST /api/wallpaper", s.handleWallpaperPost)
 	s.mux.HandleFunc("DELETE /api/wallpaper", s.handleWallpaperDelete)

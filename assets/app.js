@@ -106,6 +106,31 @@
       historyCount: '{n} 条', historyDuration: '用时 {s}', historyMore: '（{note}）',
       historyNow: '刚刚', historySecAgo: '{n} 秒', historyMinAgo: '{n} 分钟', historyHourAgo: '{n} 小时', historyDayAgo: '{n} 天',
 
+      notifyTitle: '通知', notifyHint: '任务结束时把结果推到企业微信 / 钉钉 / 飞书 / QQ 机器人，或任意 Webhook。发送失败只写日志，不会影响任务本身。',
+      notifyOnDone: '任务完成时', notifyOnError: '任务失败时',
+      notifyEmpty: '还没有渠道。填一个地址或凭据，点「添加渠道」。',
+      notifyType: '类型', notifyName: '名称', notifyNamePlaceholder: '例如：家里群',
+      notifyURL: 'Webhook 地址', notifyURLPlaceholder: 'https://…',
+      notifyHeader: '附加请求头（可选）', notifyHeaderValue: '请求头的值',
+      notifyAppID: 'AppID', notifyAppSecret: 'AppSecret',
+      notifyTargetType: '目标', notifyTargetGroup: '群聊', notifyTargetUser: '单聊', notifyTargetID: '目标 openid',
+      notifyAdd: '添加渠道', notifySave: '保存渠道', notifyCancelEdit: '取消编辑',
+      notifyEdit: '编辑', notifyDelete: '删除', notifyDeleteConfirm: '删除渠道「{name}」？',
+      notifyTest: '发送测试', notifyTesting: '发送中…', notifyTestOk: '测试成功', notifyTestFailed: '测试失败',
+      notifySaved: '通知设置已保存',
+      notifyNeedURL: '请先填 Webhook 地址',
+      notifyNeedQQ: '请先填 AppID、AppSecret 与目标 openid，或者用扫码绑定',
+      notifySecretKeep: '已保存，留空表示不修改',
+      typeWecom: '企业微信机器人', typeDingtalk: '钉钉机器人', typeFeishu: '飞书机器人',
+      typeQQBot: 'QQ 官方机器人', typeWebhook: '通用 Webhook',
+      notifyQQNote: '扫码绑定会走官方通道创建一个可用的 QQ 机器人，并把授权交给这里；也可以自己去开放平台注册开发者、创建应用，把 AppID 与 AppSecret 填进来。绑定成功后两个值会自动填入上面的输入框。',
+      notifyQRBind: '用手机 QQ 扫码绑定', notifyQRWorking: '正在生成…', notifyQRAgain: '重新生成',
+      notifyQRHint: '用手机 QQ 扫码，完成后 AppID 与 AppSecret 会自动填入',
+      notifyQRExpired: '二维码已过期，点「重新生成」再来一次',
+      notifyQRFailed: '绑定失败', notifyQROk: '绑定成功，AppID 与 AppSecret 已填入',
+      notifyQROpen: '打不开二维码？点这里', notifyQQDoc: 'QQ 机器人开放平台文档',
+
+
       pathPlaceholder: '/vol1/1000/…', pathGo: '前往',
       pathNotAllowed: '这个位置不在允许访问的范围内',
       searchPlaceholder: '搜索文件…', searchGo: '搜索', searchClear: '清除搜索',
@@ -210,6 +235,31 @@
       historyOutDownload: 'Downloaded to this computer', historyOutServer: 'Written to a NAS folder',
       historyCount: '{n} record(s)', historyDuration: 'took {s}', historyMore: '({note})',
       historyNow: 'just now', historySecAgo: '{n}s ago', historyMinAgo: '{n} min ago', historyHourAgo: '{n} h ago', historyDayAgo: '{n} d ago',
+
+      notifyTitle: 'Notifications', notifyHint: 'Push the result to a WeCom / DingTalk / Feishu / QQ bot, or any webhook, when a task ends. A failed notification is only logged — it never affects the task.',
+      notifyOnDone: 'When a task succeeds', notifyOnError: 'When a task fails',
+      notifyEmpty: 'No channels yet. Fill in an address or credentials, then choose Add channel.',
+      notifyType: 'Type', notifyName: 'Name', notifyNamePlaceholder: 'e.g. Home group',
+      notifyURL: 'Webhook URL', notifyURLPlaceholder: 'https://…',
+      notifyHeader: 'Extra request header (optional)', notifyHeaderValue: 'Header value',
+      notifyAppID: 'AppID', notifyAppSecret: 'AppSecret',
+      notifyTargetType: 'Target', notifyTargetGroup: 'Group', notifyTargetUser: 'Direct message', notifyTargetID: 'Target openid',
+      notifyAdd: 'Add channel', notifySave: 'Save channel', notifyCancelEdit: 'Cancel edit',
+      notifyEdit: 'Edit', notifyDelete: 'Delete', notifyDeleteConfirm: 'Delete channel “{name}”?',
+      notifyTest: 'Send test', notifyTesting: 'Sending…', notifyTestOk: 'Test succeeded', notifyTestFailed: 'Test failed',
+      notifySaved: 'Notification settings saved',
+      notifyNeedURL: 'Enter the webhook URL first',
+      notifyNeedQQ: 'Enter the AppID, AppSecret and target openid, or use QR binding',
+      notifySecretKeep: 'Saved — leave blank to keep it',
+      typeWecom: 'WeCom bot', typeDingtalk: 'DingTalk bot', typeFeishu: 'Feishu bot',
+      typeQQBot: 'QQ official bot', typeWebhook: 'Generic webhook',
+      notifyQQNote: 'QR binding creates a usable QQ bot through the official channel and hands its credentials to this panel; you can also register as a developer on the open platform, create an app and paste its AppID and AppSecret. Both values are filled in above once bound.',
+      notifyQRBind: 'Bind by scanning with mobile QQ', notifyQRWorking: 'Generating…', notifyQRAgain: 'Generate again',
+      notifyQRHint: 'Scan with mobile QQ — the AppID and AppSecret are filled in automatically',
+      notifyQRExpired: 'The QR code expired — generate a new one',
+      notifyQRFailed: 'Binding failed', notifyQROk: 'Bound — the AppID and AppSecret have been filled in',
+      notifyQROpen: 'Cannot scan it? Open the link', notifyQQDoc: 'QQ bot open platform docs',
+
 
       pathPlaceholder: '/vol1/1000/…', pathGo: 'Go',
       pathNotAllowed: 'That location is outside the allowed folders',
@@ -484,6 +534,7 @@
     renderRunButton();
     // 面板开着就跟着换语言，否则要关掉重开才看到新文案
     if (!$('history-modal').hidden) renderHistory();
+    if (notifyState.loaded) renderNotify();
     $('repo-link').title = t('repo');
     // 设置面板里的更新渠道选择器也是按语言拼的，切语言要跟着重画
     if (settingsState.update) renderUpdateStatus(settingsState.update);
@@ -2748,18 +2799,383 @@
     });
   }
 
+  // ------------------------------------------------------------ 通知渠道
+  //
+  // 配置存在服务端（数据目录下的 notifications.json），换浏览器、重启服务都还在。
+  // 密钥类字段服务端不原文回传，只回 has_secret，所以编辑时那个框是空的——
+  // 留空保存表示"不改动它"。
+
+  const notifyState = { data: null, editing: null, loaded: false, qr: null, qrTimer: null };
+
+  const NOTIFY_TYPE_LABELS = {
+    wecom: 'typeWecom', dingtalk: 'typeDingtalk', feishu: 'typeFeishu',
+    qqbot: 'typeQQBot', webhook: 'typeWebhook',
+  };
+
+  function notifyTypeLabel(type) {
+    return NOTIFY_TYPE_LABELS[type] ? t(NOTIFY_TYPE_LABELS[type]) : (type || '');
+  }
+
+  function notifyChannels() {
+    return (notifyState.data && notifyState.data.channels) || [];
+  }
+
+  // 服务端要的是整体替换：把当前这份配置原样送回去即可。
+  function notifyPayload() {
+    const d = notifyState.data || {};
+    return { done: !!d.done, error: !!d.error, channels: notifyChannels() };
+  }
+
+  async function loadNotifications() {
+    try {
+      notifyState.data = await api('/api/notifications', {}, 10000);
+    } catch (e) {
+      // 服务端没起来时按"没配渠道"处理，设置面板照常能打开
+      notifyState.data = { done: false, error: false, channels: [] };
+    }
+    notifyState.loaded = true;
+    renderNotify();
+  }
+
+  function renderNotify() {
+    const d = notifyState.data || { done: false, error: false, channels: [] };
+    $('notify-done').checked = !!d.done;
+    $('notify-error').checked = !!d.error;
+    renderNotifyList(d.channels || []);
+    syncNotifyForm();
+  }
+
+  function renderNotifyList(channels) {
+    $('notify-list').innerHTML = channels.length
+      ? channels.map(notifyRowHtml).join('')
+      : '<li class="notify-empty">' + escapeHtml(t('notifyEmpty')) + '</li>';
+  }
+
+  function notifyRowHtml(ch) {
+    return '<li class="notify-row" data-id="' + escapeHtml(ch.id || '') + '">' +
+      '<div class="notify-head">' +
+        '<label class="check notify-toggle"><input type="checkbox" data-act="toggle"' + (ch.enabled ? ' checked' : '') + '>' +
+          '<span>' + escapeHtml(ch.name || '') + '</span></label>' +
+        '<span class="notify-kind">' + escapeHtml(notifyTypeLabel(ch.type)) + '</span>' +
+        '<span class="notify-actions">' +
+          '<button class="link-btn" type="button" data-act="test">' + escapeHtml(t('notifyTest')) + '</button>' +
+          '<button class="link-btn" type="button" data-act="edit">' + escapeHtml(t('notifyEdit')) + '</button>' +
+          '<button class="link-btn" type="button" data-act="delete">' + escapeHtml(t('notifyDelete')) + '</button>' +
+        '</span>' +
+      '</div>' +
+      // 试发结果就地显示在这一行里：HTTP 状态与响应片段比一个会消失的提示有用得多
+      '<div class="update-result notify-result" hidden></div>' +
+    '</li>';
+  }
+
+  async function saveNotifySettings() {
+    const saved = await api('/api/notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notifyPayload()),
+    }, 15000);
+    notifyState.data = saved;
+    // 正在编辑的那条被删掉了就别继续编辑它
+    if (notifyState.editing && !(saved.channels || []).some(function (c) { return c.id === notifyState.editing.id; })) {
+      resetNotifyForm();
+    }
+    renderNotify();
+    return saved;
+  }
+
+  // 保存失败时重新拉一次，别让界面停在一个服务端并不认可的状态上。
+  async function saveNotifySettingsOrReload() {
+    try {
+      await saveNotifySettings();
+    } catch (err) {
+      toast(err.message, 'error');
+      loadNotifications();
+    }
+  }
+
+  function collectNotifyChannel() {
+    const type = $('notify-type').value;
+    const ch = {
+      type: type,
+      name: $('notify-name').value.trim() || notifyTypeLabel(type),
+      enabled: notifyState.editing ? !!notifyState.editing.enabled : true,
+      url: $('notify-url').value.trim(),
+      header_name: $('notify-header-name').value.trim(),
+      header_value: $('notify-header-value').value,
+      app_id: $('notify-appid').value.trim(),
+      app_secret: $('notify-secret').value,
+      target_type: $('notify-target-type').value,
+      target_id: $('notify-target-id').value.trim(),
+    };
+    if (notifyState.editing) ch.id = notifyState.editing.id;
+    return ch;
+  }
+
+  // 只做"填没填全"的本地检查，地址对不对交给「发送测试」去说。
+  function notifyProblem(ch) {
+    if (ch.type === 'qqbot') {
+      const hasSecret = !!ch.app_secret || !!(notifyState.editing && notifyState.editing.has_secret);
+      if (!ch.app_id || !hasSecret || !ch.target_id) return t('notifyNeedQQ');
+      return '';
+    }
+    if (!ch.url) return t('notifyNeedURL');
+    return '';
+  }
+
+  function syncNotifyForm() {
+    const type = $('notify-type').value;
+    const editing = notifyState.editing;
+    const wants = { url: type !== 'qqbot', header: type === 'webhook', qqbot: type === 'qqbot' };
+    document.querySelectorAll('[data-notify-field]').forEach(function (el) {
+      el.hidden = !wants[el.dataset.notifyField];
+    });
+    $('btn-notify-save').textContent = editing ? t('notifySave') : t('notifyAdd');
+    $('btn-notify-cancel').hidden = !editing;
+    // 切走类型就停掉扫码轮询：留着它每两秒问一次服务端，纯属白问。
+    if (!wants.qqbot && notifyState.qr) stopQQBind();
+    // 密钥不回传原文，编辑时框是空的；用 placeholder 说明"留空=不改动"
+    $('notify-secret').placeholder = editing && editing.has_secret ? t('notifySecretKeep') : '';
+    $('notify-header-value').placeholder =
+      editing && editing.has_header_value ? t('notifySecretKeep') : t('notifyHeaderValue');
+  }
+
+  function resetNotifyForm() {
+    notifyState.editing = null;
+    $('notify-name').value = '';
+    $('notify-url').value = '';
+    $('notify-header-name').value = '';
+    $('notify-header-value').value = '';
+    $('notify-appid').value = '';
+    $('notify-secret').value = '';
+    $('notify-target-id').value = '';
+    $('notify-form-result').hidden = true;
+    stopQQBind();
+    syncNotifyForm();
+  }
+
+  async function submitNotifyChannel() {
+    const ch = collectNotifyChannel();
+    const problem = notifyProblem(ch);
+    if (problem) {
+      toast(problem, 'warn');
+      return;
+    }
+    const channels = notifyChannels().slice();
+    if (notifyState.editing) {
+      const i = channels.findIndex(function (c) { return c.id === ch.id; });
+      if (i >= 0) channels[i] = ch; else channels.push(ch);
+    } else {
+      channels.push(ch);
+    }
+    notifyState.data = Object.assign({}, notifyState.data, { channels: channels });
+    try {
+      await saveNotifySettings(); // 空着没回传的密钥由服务端按 id 补回
+      resetNotifyForm();
+      toast(t('notifySaved'), 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+      loadNotifications();
+    }
+  }
+
+  function editNotifyChannel(id) {
+    const ch = notifyChannels().filter(function (c) { return c.id === id; })[0];
+    if (!ch) return;
+    notifyState.editing = ch;
+    $('notify-type').value = NOTIFY_TYPE_LABELS[ch.type] ? ch.type : 'webhook';
+    $('notify-name').value = ch.name || '';
+    $('notify-url').value = ch.url || '';
+    $('notify-header-name').value = ch.header_name || '';
+    $('notify-header-value').value = '';
+    $('notify-appid').value = ch.app_id || '';
+    $('notify-secret').value = '';
+    $('notify-target-type').value = ch.target_type === 'user' ? 'user' : 'group';
+    $('notify-target-id').value = ch.target_id || '';
+    stopQQBind();
+    syncNotifyForm();
+  }
+
+  async function deleteNotifyChannel(id) {
+    const ch = notifyChannels().filter(function (c) { return c.id === id; })[0];
+    if (!ch) return;
+    if (!window.confirm(t('notifyDeleteConfirm', { name: ch.name || '' }))) return;
+    notifyState.data = Object.assign({}, notifyState.data, {
+      channels: notifyChannels().filter(function (c) { return c.id !== id; }),
+    });
+    await saveNotifySettingsOrReload();
+  }
+
+  async function toggleNotifyChannel(id, enabled) {
+    const editingID = notifyState.editing ? notifyState.editing.id : '';
+    const channels = notifyChannels().map(function (c) {
+      return c.id === id ? Object.assign({}, c, { enabled: enabled }) : c;
+    });
+    notifyState.data = Object.assign({}, notifyState.data, { channels: channels });
+    if (editingID) {
+      notifyState.editing = channels.filter(function (c) { return c.id === editingID; })[0] || notifyState.editing;
+    }
+    await saveNotifySettingsOrReload();
+  }
+
+  async function setNotifyTrigger(key, value) {
+    const patch = {};
+    patch[key] = value;
+    notifyState.data = Object.assign({}, notifyState.data || {}, patch);
+    await saveNotifySettingsOrReload();
+  }
+
+  // 试发：结果就地写进传进来的那个容器（渠道行，或表单下方那块）。
+  async function testNotifyChannel(ch, host) {
+    if (!host) return;
+    host.hidden = false;
+    host.dataset.kind = '';
+    host.textContent = t('notifyTesting');
+    try {
+      const res = await api('/api/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ch),
+      }, 20000);
+      host.dataset.kind = res && res.ok ? 'ok' : 'err';
+      host.textContent = (res && res.ok ? t('notifyTestOk') : t('notifyTestFailed')) +
+        ' — ' + ((res && res.detail) || '');
+    } catch (err) {
+      host.dataset.kind = 'err';
+      host.textContent = t('notifyTestFailed') + ' — ' + err.message;
+    }
+  }
+
+  // QQ 扫码绑定：浏览器只跟自己的服务端打交道，与官方的往返全在服务端完成
+  // （本地密钥不出服务器，前端拿到的只是一张图和一个会话号）。
+  function stopQQBind() {
+    if (notifyState.qrTimer) {
+      clearInterval(notifyState.qrTimer);
+      notifyState.qrTimer = null;
+    }
+    notifyState.qr = null;
+    $('notify-qr').hidden = true;
+    $('notify-qr-img').innerHTML = '';
+    $('notify-qr-state').textContent = '';
+  }
+
+  async function startQQBind() {
+    stopQQBind();
+    const btn = $('btn-notify-qr');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = t('notifyQRWorking');
+    try {
+      const data = await api('/api/notifications/qq/start', { method: 'POST' }, 20000);
+      notifyState.qr = data.session_id;
+      $('notify-qr-img').innerHTML = data.qr_svg || '';
+      $('notify-qr-link').href = data.qr_url || '#';
+      $('notify-qr').hidden = false;
+      $('notify-qr-state').textContent = t('notifyQRHint');
+      notifyState.qrTimer = setInterval(pollQQBind, 2000);
+    } catch (err) {
+      $('notify-qr').hidden = false;
+      $('notify-qr-img').innerHTML = '';
+      $('notify-qr-state').textContent = t('notifyQRFailed') + ' — ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label || t('notifyQRBind');
+    }
+  }
+
+  function stopQQBindPolling() {
+    if (notifyState.qrTimer) {
+      clearInterval(notifyState.qrTimer);
+      notifyState.qrTimer = null;
+    }
+  }
+
+  async function pollQQBind() {
+    const session = notifyState.qr;
+    if (!session) return;
+    try {
+      const data = await api('/api/notifications/qq/poll?session=' + encodeURIComponent(session), {}, 15000);
+      if (data.status === 'completed') {
+        $('notify-appid').value = data.app_id || '';
+        $('notify-secret').value = data.app_secret || '';
+        // 扫码的那个 openid 是"人"的 openid，只有单聊能直接用它；
+        // 群聊的 group_openid 得从群里 @ 机器人之后拿，不能拿这个顶上。
+        if (data.user_openid && $('notify-target-type').value === 'user') {
+          $('notify-target-id').value = data.user_openid;
+        }
+        stopQQBind();
+        toast(t('notifyQROk'), 'success');
+        return;
+      }
+      if (data.status === 'expired' || data.status === 'failed') {
+        stopQQBindPolling();
+        $('notify-qr-state').textContent = data.error ||
+          (data.status === 'expired' ? t('notifyQRExpired') : t('notifyQRFailed'));
+        return;
+      }
+      $('notify-qr-state').textContent = data.error || t('notifyQRHint');
+    } catch (err) {
+      // 网络抖一下不终止：服务端那边可能还在等扫码
+      $('notify-qr-state').textContent = t('notifyQRFailed') + ' — ' + err.message;
+    }
+  }
+
   function openSettings() {
     $('settings-modal').hidden = false;
     api('/api/update', {}, 10000).then(renderUpdateStatus).catch(function () {});
     loadSettings();
+    loadNotifications();
     loadChangelog();
+  }
+
+  // 面板一关就停掉扫码轮询：关了还每两秒问一次服务端，是白问。
+  function closeSettings() {
+    $('settings-modal').hidden = true;
+    stopQQBind();
   }
 
   function bindSettingsEvents() {
     $('settings-toggle').addEventListener('click', openSettings);
-    $('settings-close').addEventListener('click', function () { $('settings-modal').hidden = true; });
+    $('settings-close').addEventListener('click', closeSettings);
     $('settings-modal').addEventListener('click', function (e) {
-      if (e.target === $('settings-modal')) $('settings-modal').hidden = true;
+      if (e.target === $('settings-modal')) closeSettings();
+    });
+
+    // ---- 通知：触发开关、渠道增删改、试发、QQ 扫码绑定
+    $('notify-done').addEventListener('change', function () { setNotifyTrigger('done', $('notify-done').checked); });
+    $('notify-error').addEventListener('change', function () { setNotifyTrigger('error', $('notify-error').checked); });
+    $('notify-type').addEventListener('change', syncNotifyForm);
+    $('btn-notify-save').addEventListener('click', function () { submitNotifyChannel(); });
+    $('btn-notify-cancel').addEventListener('click', resetNotifyForm);
+    $('btn-notify-test-form').addEventListener('click', function () {
+      const ch = collectNotifyChannel();
+      const problem = notifyProblem(ch);
+      if (problem) {
+        toast(problem, 'warn');
+        return;
+      }
+      testNotifyChannel(ch, $('notify-form-result'));
+    });
+    $('btn-notify-qr').addEventListener('click', startQQBind);
+    $('btn-notify-qr-again').addEventListener('click', startQQBind);
+
+    $('notify-list').addEventListener('change', function (ev) {
+      const box = ev.target.closest('input[data-act="toggle"]');
+      if (!box) return;
+      const row = box.closest('.notify-row');
+      if (row) toggleNotifyChannel(row.dataset.id, box.checked);
+    });
+    $('notify-list').addEventListener('click', function (ev) {
+      const btn = ev.target.closest('button[data-act]');
+      if (!btn) return;
+      const row = btn.closest('.notify-row');
+      const id = row && row.dataset.id;
+      const act = btn.dataset.act;
+      if (act === 'delete') deleteNotifyChannel(id);
+      else if (act === 'edit') editNotifyChannel(id);
+      else if (act === 'test') {
+        const ch = notifyChannels().filter(function (c) { return c.id === id; })[0];
+        if (ch) testNotifyChannel(ch, row.querySelector('.notify-result'));
+      }
     });
 
     $('btn-update-check').addEventListener('click', checkUpdate);

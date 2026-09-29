@@ -1045,6 +1045,9 @@ a.icon-btn { text-decoration: none; }
    刷新按钮：行尾有了收束，也不再是"两个空盒子拉满一行"。
    窄屏（≤560px）仍旧叠成两行。 */
 .browser-nav {
+  /* 这一行三个盒子的统一高度：地址栏、搜索框、刷新按钮都按它来，
+     刷新才是"与它们一样大的正方形"（写死一个变量，改一处三处齐）。 */
+  --nav-h: 43px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1067,20 +1070,28 @@ a.icon-btn { text-decoration: none; }
 /* 路径框按需要定宽（它常装一条长路径，但不必占满整行）；搜索框吃掉剩下的
    宽度，右边缘停在刷新图标前面——中间那点间隙就是这一行的 gap。
    两者都可缩：容器窄了先缩路径框，再缩搜索框。 */
-.path-field { flex: 0 1 380px; }
-.search-field { flex: 1 1 240px; }
-/* 刷新做成和"搜索"一样的小图标按钮：一个文字按钮孤零零挂在行尾，
-   既比旁边高，也把右侧拉得不齐。 */
+.path-field { flex: 0 1 380px; height: var(--nav-h); }
+.search-field { flex: 1 1 240px; height: var(--nav-h); }
+/* 刷新：一个正方形按钮，高宽与旁边的地址栏/搜索框一致——
+   align-self: stretch 撑到行高（这一行最高的是两个输入框），
+   aspect-ratio: 1 保证它是正方形，不用写死像素值。 */
 .nav-refresh {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  /* 正方形，边长＝上面那个统一高度。aspect-ratio 在这里指望不上：
+     flex 行里的宽度先由内容算出来，不会从拉伸后的高度反推。 */
+  width: var(--nav-h);
+  height: var(--nav-h);
   padding: 0;
-  border-color: transparent;
-  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunk);
+  color: var(--ink-dim);
+  cursor: pointer;
   flex: none;
+  transition: color .16s, border-color .16s;
 }
+.nav-refresh:hover { color: var(--accent); border-color: var(--accent-line); }
 
 .nav-field:focus-within { border-color: var(--accent); }
 .nav-glyph { flex: none; color: var(--ink-faint); }
@@ -1565,6 +1576,7 @@ a.icon-btn { text-decoration: none; }
 /* 矮窗口（笔记本，或把飞牛窗口拖得很扁）：整体收紧留白，
    把纵向空间让给内容，而不是让用户去滚那几层外层空白 */
 @media (max-height: 760px) {
+  .browser-nav { --nav-h: 36px; }
   .topbar { padding: 9px clamp(14px, 3vw, 26px); }
   .brand-mark { width: 32px; height: 32px; border-radius: 9px; }
   .brand-text small { display: none; }

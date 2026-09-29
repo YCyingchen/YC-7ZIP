@@ -57,7 +57,13 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
 
     await page.fill('#path-input', FILE);
     await page.click('#path-go');
-    await page.waitForTimeout(1500);
+    // 等结果真的出来，而不是固定等 1.5 秒——页面变重之后固定等待会抢跑，
+    // 表现成"功能坏了"，其实只是断言太早。
+    await page.waitForFunction(
+      () => /已选择\s*[1-9]\s*项/.test(document.body.innerText),
+      null,
+      { timeout: 8000 },
+    ).catch(() => {});
     const picked = await page.evaluate(() => {
       const m = document.body.innerText.replace(/\s+/g, ' ').match(/已选择\s*(\d+)\s*项/);
       return m ? Number(m[1]) : 0;

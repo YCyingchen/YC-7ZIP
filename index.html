@@ -147,7 +147,14 @@
             <button class="nav-btn nav-clear" id="search-clear" type="button" hidden
                     data-i18n-title="searchClear" aria-label="清除搜索">×</button>
           </div>
-          <button class="nav-btn nav-refresh" id="browser-refresh" type="button" data-i18n="refresh">刷新</button>
+          <button class="nav-btn nav-refresh" id="browser-refresh" type="button"
+                  data-i18n-title="refresh" aria-label="刷新">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/>
+              <path d="M20.5 5.5V11H15"/>
+            </svg>
+          </button>
         </div>
         <div class="search-note" id="search-note" hidden></div>
 

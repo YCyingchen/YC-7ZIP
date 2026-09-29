@@ -1048,6 +1048,9 @@ a.icon-btn { text-decoration: none; }
   display: flex;
   align-items: center;
   gap: 10px;
+  /* 左右内缩：不加这两下，地址栏与搜索框的边框会一路顶到面板外框上，
+     看着像"没装进面板里"。14px 与面板头（.panel-head）对齐。 */
+  padding: 0 14px;
   margin: 0 0 8px;
 }
 .nav-field {
@@ -1064,7 +1067,19 @@ a.icon-btn { text-decoration: none; }
 /* 可缩不可伸：容器窄了跟着变短，容器宽了也不会又摊满整行 */
 .path-field { flex: 0 1 380px; }
 .search-field { flex: 0 1 280px; }
-.nav-refresh { flex: none; margin-left: auto; }
+/* 刷新做成和"搜索"一样的小图标按钮：一个文字按钮孤零零挂在行尾，
+   既比旁边高，也把右侧拉得不齐。 */
+.nav-refresh {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  flex: none;
+  margin-left: auto;
+}
 
 .nav-field:focus-within { border-color: var(--accent); }
 .nav-glyph { flex: none; color: var(--ink-faint); }
@@ -1109,7 +1124,7 @@ a.icon-btn { text-decoration: none; }
 
 /* 搜索结果的那一行说明：在哪个目录下找到几项、有没有被截断 */
 .search-note {
-  margin: 0 0 8px;
+  margin: 0 14px 8px;
   padding: 6px 9px;
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);

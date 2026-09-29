@@ -89,6 +89,15 @@
       itemsCount: '{n} 项', totalSize: '总大小', packedSize: '压缩后', ratio: '压缩率',
       enterDir: '进入目录', selectDir: '选择此目录',
       pickerTitle: '选择输出目录', pickerConfirm: '用此目录', close: '关闭',
+
+      pathPlaceholder: '/vol1/1000/…', pathGo: '前往',
+      pathNotAllowed: '这个位置不在允许访问的范围内',
+      searchPlaceholder: '搜索文件…', searchGo: '搜索', searchClear: '清除搜索',
+      searchHint: '回车搜所有子目录；输入时先在当前目录里筛',
+      searchResultTitle: '在 {path} 下找到 {n} 项',
+      searchTruncated: '结果很多，只列了前 {n} 项',
+      searchEmpty: '没找到匹配的文件',
+      searchAtRoot: './',
     },
     en: {
       tagline: 'Compress & extract on your NAS', connecting: 'Connecting…', connected: '7-Zip {v} ready',
@@ -169,6 +178,15 @@
       itemsCount: '{n} item(s)', totalSize: 'Total', packedSize: 'Packed', ratio: 'Ratio',
       enterDir: 'Open folder', selectDir: 'Use this folder',
       pickerTitle: 'Choose the output folder', pickerConfirm: 'Use this folder', close: 'Close',
+
+      pathPlaceholder: '/vol1/1000/…', pathGo: 'Go',
+      pathNotAllowed: 'That location is outside the allowed folders',
+      searchPlaceholder: 'Find a file…', searchGo: 'Search', searchClear: 'Clear search',
+      searchHint: 'Enter searches every subfolder; typing filters this folder',
+      searchResultTitle: '{n} match(es) under {path}',
+      searchTruncated: 'Too many matches — showing the first {n}',
+      searchEmpty: 'No matching files',
+      searchAtRoot: './',
     },
   };
 
@@ -262,6 +280,14 @@
     view: 'list',
     /** 类型筛选：all / image / video / archive / doc */
     typeFilter: 'all',
+    /** 搜索框里的字：非空时先在当前目录里即时筛一遍 */
+    searchQuery: '',
+    /** 递归搜索的结果；null 表示"没在搜"，此时列表就是当前目录 */
+    searchResults: null,
+    /** 递归搜索的元信息：搜索根、是否被截断、扫了多少条 */
+    searchMeta: null,
+    /** 搜索请求序号：回来晚的那次不再覆盖新的结果 */
+    searchSeq: 0,
     /** 选中的 NAS 路径（压缩可多选，解压只有一个） */
     picked: new Map(),
 
@@ -406,6 +432,14 @@
     document.documentElement.lang = state.lang;
     $('lang-toggle').textContent = state.lang === 'zh-CN' ? 'EN' : '中文';
     document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    // 地址栏与搜索框只有 placeholder，没有可见文字，所以要单独跟着语言走
+    // （顺带把 aria-label 也设上，不然读屏软件读到的还是硬编码的中文）。
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+      const text = t(el.dataset.i18nPlaceholder);
+      el.placeholder = text;
+      el.setAttribute('aria-label', text);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); });
     renderEnginePill();
     renderDropCopy();
     renderFormats();
@@ -566,8 +600,10 @@
 
   // --------------------------------------------------------- NAS 文件浏览
 
+  // 跳转成功返回 true。地址栏要靠这个返回值判断"这个路径到底打没打开"，
+  // 好在打不开时退回它的上级目录再去找文件名。
   async function loadDir(path) {
-    if (!state.online) return;
+    if (!state.online) return false;
     $('browser-list').innerHTML = `<li class="muted-row">${escapeHtml(t('loading'))}</li>`;
     try {
       const data = await api(`/api/browse?path=${encodeURIComponent(path || '')}`, {}, 20000);
@@ -575,18 +611,132 @@
         $('browser-list').innerHTML = `<li class="muted-row">${escapeHtml(t('noAllowRoots'))}</li>`;
         state.browserEntries = [];
         renderCrumbs('');
-        return;
+        return false;
       }
+      const requested = String(path || '');
       state.browserPath = data.path || '';
       state.browserEntries = data.path ? (data.entries || []) : [];
       // 服务端给的那份才是权威的（允许清单运行时会变）。之前只在"有 path"时
       // 才更新，于是退回根视图时用的还是初始化那一份，甚至还是字符串。
       if (data.roots && data.roots.length) state.browserRoots = data.roots;
+      // 换了目录，上一次的搜索结果就不成立了（它在别处找出来的东西）
+      clearSearch();
+      syncPathInput();
       renderCrumbs(data.path || '', data.parent || '', data.roots || []);
       renderBrowser();
+      if (requested && normPath(requested) !== normPath(state.browserPath)) {
+        // 服务端把越界或读不了的路径退回成了"可用目录"那一层。不说明的话就是
+        // 地址栏敲了回车、界面自己跳走了，看着像坏了。
+        toast(t('pathNotAllowed'), 'warn');
+      }
+      return true;
     } catch (err) {
       $('browser-list').innerHTML = `<li class="muted-row">${escapeHtml(err.message)}</li>`;
+      return false;
     }
+  }
+
+  // ---------------------------------------------- 地址栏与搜索
+
+  // 路径比较用的归一化：结尾斜杠、Windows 的反斜杠都不该算"路径变了"
+  function normPath(p) {
+    return String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  }
+
+  function syncPathInput() {
+    // 服务端回来的才是权威路径（它会把越界/不存在的路径回退掉、也会做规范化），
+    // 所以每次跳转完都把地址栏对齐到它。
+    const input = $('path-input');
+    if (input) input.value = state.browserPath || '';
+  }
+
+  // 清掉搜索：结果、元信息、输入框里的字一起清，三者必须同步，
+  // 否则会出现"框里还有字、列表却是完整目录"这种自相矛盾的画面。
+  function clearSearch() {
+    state.searchSeq++; // 让在途的搜索请求回来时作废
+    state.searchQuery = '';
+    state.searchResults = null;
+    state.searchMeta = null;
+    const input = $('search-input');
+    if (input) input.value = '';
+    syncSearchChrome();
+  }
+
+  function syncSearchChrome() {
+    const clear = $('search-clear');
+    if (clear) clear.hidden = !state.searchQuery;
+    const note = $('search-note');
+    if (!note) return;
+    if (state.searchResults === null) {
+      note.hidden = true;
+      note.textContent = '';
+      return;
+    }
+    const meta = state.searchMeta || {};
+    const where = meta.path || t('rootLabel');
+    let text = t('searchResultTitle', { n: String(state.searchResults.length), path: where });
+    if (meta.truncated) text += ' · ' + t('searchTruncated', { n: String(state.searchResults.length) });
+    note.hidden = false;
+    note.textContent = text;
+  }
+
+  // 地址栏回车：先问服务端这是什么。
+  //
+  // 粘进来的多半是"某个文件的完整路径"（从文件管理器复制），所以打不开目录时
+  // 退到它的上级、把文件名填进搜索框并选中——这一步就把"找到那个文件"做完了。
+  async function gotoPath(raw) {
+    const p = String(raw || '').trim();
+    if (!p) { await loadDir(''); return; }
+    let info = null;
+    try {
+      info = await api(`/api/inspect?path=${encodeURIComponent(p)}`, {}, 15000);
+    } catch {
+      toast(t('pathNotAllowed'), 'warn');
+      return;
+    }
+    if (info && info.is_dir) {
+      await loadDir(p);
+      return;
+    }
+    const cut = p.replace(/[\\/][^\\/]*$/, '');
+    const base = p.slice(cut.length).replace(/^[\\/]+/, '');
+    if (!cut || !base) { await loadDir(p); return; }
+    if (!await loadDir(cut)) { toast(t('pathNotAllowed'), 'warn'); return; }
+    state.searchQuery = base;
+    $('search-input').value = base;
+    selectByName(base);
+    renderBrowser();
+  }
+
+  // 按名字把当前目录里的那一个选中（地址栏粘文件路径时用）
+  function selectByName(name) {
+    const hit = (state.browserEntries || []).find(
+      (e) => !e.is_dir && String(e.name).toLowerCase() === String(name).toLowerCase()
+    );
+    if (hit) togglePick(hit, true);
+  }
+
+  async function runSearch() {
+    const q = state.searchQuery.trim();
+    if (!q || !state.online) { state.searchResults = null; state.searchMeta = null; renderBrowser(); return; }
+    const seq = ++state.searchSeq;
+    try {
+      const data = await api(
+        `/api/search?path=${encodeURIComponent(state.browserPath || '')}&q=${encodeURIComponent(q)}`,
+        {}, 30000
+      );
+      if (seq !== state.searchSeq) return; // 又敲了一次，这次结果已经过期
+      state.searchResults = data.entries || [];
+      state.searchMeta = {
+        path: data.path || '', truncated: !!data.truncated, scanned: data.scanned || 0,
+      };
+    } catch (err) {
+      if (seq !== state.searchSeq) return;
+      toast(err.message, 'warn');
+      state.searchResults = null;
+      state.searchMeta = null;
+    }
+    renderBrowser();
   }
 
   function renderCrumbs(path, parent, roots) {
@@ -655,11 +805,31 @@
     return Math.min(1, parts.length);
   }
 
-  // 筛选只作用于文件：目录要一直可见，否则没法往下走
+  // 类型筛选只作用于文件：目录要一直可见，否则没法往下走。
+  // 搜索框里的字是另一回事——它是个"名字包含"过滤，目录也要一起筛，
+  // 否则输了一串字、列表里还杵着几十个目录，等于没筛。
   function visibleEntries() {
-    const rows = state.browserPath ? state.browserEntries : state.browserRoots;
+    let rows;
+    if (state.searchResults !== null) {
+      rows = state.searchResults;
+    } else {
+      rows = state.browserPath ? state.browserEntries : state.browserRoots;
+      const tokens = state.searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (tokens.length) {
+        rows = rows.filter((e) => {
+          const name = String(e.name).toLowerCase();
+          return tokens.every((tok) => name.includes(tok));
+        });
+      }
+    }
     if (state.typeFilter === 'all') return rows;
     return rows.filter((e) => e.is_dir || kindOf(e.name) === state.typeFilter);
+  }
+
+  // 列表为空时说什么：搜索没结果和空目录不是一回事
+  function emptyText() {
+    if (state.searchResults !== null || state.searchQuery.trim()) return t('searchEmpty');
+    return state.typeFilter === 'all' ? t('emptyDir') : t('noMatch');
   }
 
   function renderBrowser() {
@@ -670,6 +840,7 @@
     list.hidden = grid;
     gallery.hidden = !grid;
 
+    syncSearchChrome();
     const rows = visibleEntries();
     if (grid) renderGallery(gallery, rows);
     else renderList(list, rows);
@@ -678,8 +849,7 @@
   function renderList(list, rows) {
     list.innerHTML = '';
     if (!rows.length) {
-      list.innerHTML = `<li class="muted-row">${escapeHtml(
-        state.typeFilter === 'all' ? t('emptyDir') : t('noMatch'))}</li>`;
+      list.innerHTML = `<li class="muted-row">${escapeHtml(emptyText())}</li>`;
       return;
     }
 
@@ -708,6 +878,17 @@
       });
       li.appendChild(name);
 
+      // 搜索结果来自不同子目录，光一个文件名分不清是哪一份。这一列写清它在
+      // 搜索根的哪一层，点一下就跳到它所在的目录。
+      if (state.searchResults !== null && entry.rel) {
+        const where = document.createElement('span');
+        where.className = 'fwhere';
+        where.textContent = relDirLabel(entry.rel);
+        where.title = entry.dir || '';
+        where.addEventListener('click', (ev) => { ev.stopPropagation(); gotoPath(entry.dir); });
+        li.appendChild(where);
+      }
+
       if (!entry.is_dir) {
         const size = document.createElement('span');
         size.className = 'fsize';
@@ -718,13 +899,22 @@
     });
   }
 
+  // relDirLabel 把"相对搜索根的路径"缩成它所在的目录。
+  // 顶层文件没有斜杠，显示 ./ 比显示空白更清楚。
+  function relDirLabel(rel) {
+    const s = String(rel || '');
+    const i = s.lastIndexOf('/');
+    if (i < 0) return t('searchAtRoot');
+    const dir = s.slice(0, i);
+    return dir ? dir + '/' : t('searchAtRoot');
+  }
+
   // renderGallery 画网格。缩略图由服务端缩放；服务端解不了的格式（webp/avif 等）
   // 会自动重定向到原文件，交给浏览器自己解码。
   function renderGallery(host, rows) {
     host.innerHTML = '';
     if (!rows.length) {
-      host.innerHTML = `<div class="muted-row">${escapeHtml(
-        state.typeFilter === 'all' ? t('emptyDir') : t('noMatch'))}</div>`;
+      host.innerHTML = `<div class="muted-row">${escapeHtml(emptyText())}</div>`;
       return;
     }
 
@@ -794,6 +984,13 @@
       name.textContent = entry.name;
       name.title = entry.path;
       meta.appendChild(name);
+      if (state.searchResults !== null && entry.rel) {
+        const where = document.createElement('span');
+        where.className = 'tile-dir';
+        where.textContent = relDirLabel(entry.rel);
+        where.title = entry.dir || '';
+        meta.appendChild(where);
+      }
       if (!entry.is_dir) {
         const size = document.createElement('span');
         size.className = 'tile-size';
@@ -1679,6 +1876,34 @@
     $('tab-server').addEventListener('click', () => { if (state.browserRoots.length) setSource('server'); else toast(t('noAllowRoots'), 'warn'); });
     $('tab-upload').addEventListener('click', () => setSource('upload'));
     $('browser-refresh').addEventListener('click', () => loadDir(state.browserPath));
+
+    // 地址栏：粘一个路径进去就能跳，不用一层层点
+    $('path-go').addEventListener('click', () => gotoPath($('path-input').value));
+    $('path-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); gotoPath($('path-input').value); }
+      // Esc 放弃这次输入，恢复成当前真实路径
+      if (e.key === 'Escape') { e.preventDefault(); syncPathInput(); $('path-input').blur(); }
+    });
+
+    // 搜索：输入时先在当前目录里筛（不发请求，敲一下就有反应），
+    // 回车才去子目录里翻（那才是要花时间的操作）。
+    const searchInput = $('search-input');
+    searchInput.addEventListener('input', () => {
+      state.searchQuery = searchInput.value;
+      state.searchResults = null;
+      state.searchMeta = null;
+      renderBrowser();
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+      if (e.key === 'Escape') { e.preventDefault(); clearSearch(); renderBrowser(); }
+    });
+    $('search-go').addEventListener('click', () => runSearch());
+    $('search-clear').addEventListener('click', () => {
+      clearSearch();
+      renderBrowser();
+      $('search-input').focus();
+    });
 
     $('view-list').addEventListener('click', () => setView('list'));
     $('view-grid').addEventListener('click', () => setView('grid'));

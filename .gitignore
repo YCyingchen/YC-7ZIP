@@ -29,3 +29,6 @@ desktop.ini
 # Python
 __pycache__/
 *.pyc
+
+# 与小米 MiMo 的对话记录：含 NAS 路径、目录名等私人信息，仓库是公开的，只留本机
+docs/mimo/

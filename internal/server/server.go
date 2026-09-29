@@ -277,6 +277,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/jobs/{id}/download-all", s.handleDownloadAll)
 
 	s.mux.HandleFunc("GET /api/browse", s.handleBrowse)
+	s.mux.HandleFunc("GET /api/search", s.handleSearch)
 	s.mux.HandleFunc("GET /api/inspect", s.handleInspect)
 	s.mux.HandleFunc("GET /api/thumb", s.handleThumb)
 	s.mux.HandleFunc("GET /api/raw", s.handleRaw)

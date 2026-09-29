@@ -1,7 +1,7 @@
 appname               = yc7zip
 # fnpack 只接受 semver，这里是 zip2609.001 的换算值（26 年 . 09 月 . 第 1 次修改）。
 # 用 deploy/version.sh sync-manifest 保持与 VERSION 一致。
-version               = 26.9.10
+version               = 26.9.11
 display_name          = YC-7ZIP
 desc                  = <p>在 NAS 本机直接读写文件的压缩与解压工具，支持 7z / ZIP / RAR / TAR / GZ / XZ / ISO 等格式，并支持分卷压缩与分卷解压（飞牛原生压缩没有分卷）。</p>
 platform              = all

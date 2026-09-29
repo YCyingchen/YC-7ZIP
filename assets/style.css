@@ -1799,6 +1799,23 @@ body.has-wallpaper .panel {
     flex-direction: column;
     min-height: 0;
   }
+
+  /* 两列都框在一屏之内。只压右列不够：行高取的是两列里更高的那个，
+     左列的图览/列表照样能把整行撑出屏幕，结果就是"左列底边比右列低一大截"。
+     框住之后，多出来的高度交给左边（见上面的 flex 规则），右边则在卡片里滚。 */
+  .col-source,
+  .col-options {
+    max-height: calc(100vh - 190px);
+  }
+  .col-options > .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .col-options #panel-options {
+    overflow-y: auto;
+    min-height: 0;
+  }
   /* :not([hidden]) 是必须的：切到「本机上传」时这块会被 hidden，而
      display:flex 会盖掉 [hidden] 自带的 display:none，于是"藏起来的那块"
      又冒出来了。 */

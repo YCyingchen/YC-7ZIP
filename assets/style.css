@@ -1096,7 +1096,11 @@ a.icon-btn { text-decoration: none; }
 .nav-field:focus-within { border-color: var(--accent); }
 .nav-glyph { flex: none; color: var(--ink-faint); }
 
-.nav-input {
+/* 这两下必须比全局的 input[type="text"] 更具体：那条规则带属性选择器
+   （input[type=text] 是 0,1,1，.nav-input 只有 0,1,0），一个类压不住它——
+   于是导航里的输入框一直带着自己的边框和底色，套在外框里成了"框里还有框"，
+   高度也顶到了外框边上。改成两级类选择器才真正盖住。 */
+.nav-field .nav-input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -1104,7 +1108,8 @@ a.icon-btn { text-decoration: none; }
   color: var(--ink);
   font-family: var(--mono);
   font-size: 12.5px;
-  padding: 7px 0;
+  line-height: 1.4;
+  padding: 6px 0;
 }
 .nav-input:focus { outline: none; }
 .nav-input::placeholder { color: var(--ink-faint); }

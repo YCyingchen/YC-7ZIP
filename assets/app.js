@@ -30,7 +30,8 @@
       archiveTitle: '压缩包内容', selectAll: '全选', selectNone: '全不选',
       pickOneArchive: '请在左侧选择一个压缩包',
 
-      formatTitle: '压缩格式', optionsTitle: '参数',
+      formatTitle: '压缩设置', extractTitle: '解压设置',
+      groupOutput: '输出', groupCompress: '压缩', groupEncrypt: '加密', groupFiles: '文件处理',
       optName: '输出文件名', optLevel: '压缩级别',
       levelFast: '更快', levelBalanced: '均衡', levelMax: '最小体积',
       optPassword: '密码', show: '显示', hide: '隐藏', optEncryptNames: '同时加密文件名',
@@ -132,7 +133,8 @@
       archiveTitle: 'Archive contents', selectAll: 'All', selectNone: 'None',
       pickOneArchive: 'Pick an archive on the left',
 
-      formatTitle: 'Format', optionsTitle: 'Options',
+      formatTitle: 'Compression', extractTitle: 'Extraction',
+      groupOutput: 'Output', groupCompress: 'Compression', groupEncrypt: 'Encryption', groupFiles: 'Files',
       optName: 'Output name', optLevel: 'Compression level',
       levelFast: 'Faster', levelBalanced: 'Balanced', levelMax: 'Smallest',
       optPassword: 'Password', show: 'Show', hide: 'Hide', optEncryptNames: 'Also encrypt file names',
@@ -473,6 +475,7 @@
     renderEnginePill();
     renderDropCopy();
     renderFormats();
+    syncModeChrome(state.mode);
     renderBrowser();
     renderPicked();
     renderArchive();
@@ -574,10 +577,7 @@
     $('mode-extract').setAttribute('aria-selected', String(mode === 'extract'));
 
     const compressing = mode === 'compress';
-    $('format-panel').hidden = !compressing;
-    $('field-level').hidden = !compressing;
-    $('field-volume-size').hidden = !compressing;
-    $('field-name').hidden = !compressing;
+    syncModeChrome(mode);
     $('extract-note').hidden = compressing;
     state.format = compressing && canCreate(state.format) ? state.format : (compressing ? '7z' : state.format);
 
@@ -1380,6 +1380,30 @@
     $('opt-volume').disabled = state.mode !== 'compress' || !f.supports_volume;
   }
 
+  // 模式相关的外观：哪些块属于"压缩专属"、标题叫什么。
+  //
+  // 单独拎成一个函数，是因为 setMode 在"模式没变"时会直接返回（切模式要清空已选
+  // 文件，不能白跑一遍），而页面初始就是压缩模式——那条路径根本走不到，于是分组
+  // 标题的显隐就没人管了。init 与语言切换都要各自叫一次。
+  function syncModeChrome(mode) {
+    const compressing = mode === 'compress';
+    // 格式与参数合并成一张卡之后，卡片本身不再随模式消失——解压同样要用到密码与
+    // 文件处理，该藏的只是"压缩专属"的那几块：格式网格、输出文件名、压缩级别、高级。
+    $('format-grid').hidden = !compressing;
+    $('field-level').hidden = !compressing;
+    $('field-volume-size').hidden = !compressing;
+    $('field-name').hidden = !compressing;
+    $('group-output').hidden = !compressing;
+    $('group-compress').hidden = !compressing;
+    $('advanced-box').hidden = !compressing;
+    // 「保留目录结构 / 覆盖同名文件」是解压才用得上的，压缩时收起来；
+    // 当前格式说明只在压缩时有意义（解压选的是压缩包，不选格式）。
+    $('group-files').hidden = compressing;
+    $('field-paths').hidden = compressing;
+    $('format-hint').hidden = !compressing;
+    $('format-title').textContent = t(compressing ? 'formatTitle' : 'extractTitle');
+  }
+
   function setOutputMode(mode) {
     state.outputMode = mode;
     $('out-server').checked = mode === 'server';
@@ -2177,6 +2201,9 @@
     bindEvents();
     $('level-out').textContent = $('opt-level').value;
     setMode('compress');
+    // setMode 在"模式没变"时会提前返回，初始这遍只可能是压缩模式，所以外观要
+    // 单独同步一次，否则分组标题的显隐会停留在 HTML 里的默认值上。
+    syncModeChrome(state.mode);
     setSource('server');
     setOutputMode('server');
     renderFormats();

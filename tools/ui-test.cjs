@@ -158,7 +158,8 @@ async function browse(page, dir) {
     await page.click('#mode-extract');
     await page.waitForTimeout(500);
     check('已切到解压模式', (await page.getAttribute('#mode-extract', 'aria-selected')) === 'true');
-    check('压缩格式面板已隐藏', await page.isHidden('#format-panel'));
+    check('解压模式下不再显示压缩格式网格', await page.isHidden('#format-grid'));
+    check('解压模式下卡片仍在（密码与文件处理还要用）', await page.isVisible('#format-panel'));
 
     // 用面包屑的"上级"回到 _uitest，再进 out 目录挑一卷
     await page.locator('.crumb-up').first().click();

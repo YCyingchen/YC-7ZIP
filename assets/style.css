@@ -519,12 +519,45 @@ a { color: var(--accent); }
 
 /* -------------------------------------------------------------- 格式网格 */
 
+/* 「压缩设置」卡：上半是格式网格、下半是参数，中间只用一条细线分开——
+   比两张独立的卡少一层边框与一个重复的标题。 */
+.format-grid {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
 .formats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
   gap: 6px;
-  padding: 11px 14px 6px;
 }
+
+.panel-body { padding: 0 0 6px; }
+
+/* 分组小标题：参数多起来之后，「输出 / 压缩 / 加密 / 文件处理」这层
+   比一排分隔线更好认，也不会把面板切得七零八落。 */
+.group-title {
+  padding: 13px 14px 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
+/* 面板头右侧那句说明（当前格式的注意事项）；没有内容时不占位置 */
+.head-note {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.head-note:empty { display: none; }
+
+/* 合并卡里的参数项：分段交给分组标题，这里不再逐条画线 */
+.panel-body .field { padding: 8px 14px 12px; border-bottom: 0; }
 
 .fmt {
   position: relative;
@@ -547,6 +580,18 @@ a { color: var(--accent); }
   background: var(--accent-soft);
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+/* 选中的那个再点一个小圆点：只靠底色区分，在浅色主题下不够明显。
+   「仅解压」的角标在右上角，但那些按钮不可选中，不会撞在一起。 */
+.fmt.is-active::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .fmt:disabled { opacity: .38; cursor: not-allowed; }
 .fmt .fmt-id { font-weight: 600; font-size: 12.5px; letter-spacing: .02em; }

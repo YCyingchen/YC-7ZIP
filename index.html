@@ -227,14 +227,21 @@
 
   <section class="col col-options">
 
+    <!-- 格式与参数合并成一张卡：选格式和调参数本来是一件事——RAR 只能解压、
+         ZIP 不支持固实、只有 7z 能加密文件名；分成两张卡只会让人来回对着看，
+         中间那条分隔线也只是噪音。 -->
     <div class="panel" id="format-panel">
-      <div class="panel-head"><h2 data-i18n="formatTitle">压缩格式</h2></div>
-      <div class="formats" id="formats" role="radiogroup" aria-label="压缩格式"></div>
-      <p class="hint" id="format-hint"></p>
-    </div>
+      <div class="panel-head">
+        <h2 id="format-title" data-i18n="formatTitle">压缩设置</h2>
+        <span class="head-note" id="format-hint"></span>
+      </div>
 
-    <div class="panel" id="panel-options">
-      <div class="panel-head"><h2 data-i18n="optionsTitle">参数</h2></div>
+      <div class="format-grid" id="format-grid">
+        <div class="formats" id="formats" role="radiogroup" aria-label="压缩格式"></div>
+      </div>
+
+      <div class="panel-body" id="panel-options">
+        <div class="group-title" id="group-output" data-i18n="groupOutput">输出</div>
 
       <div class="field" id="field-name">
         <label for="opt-name" data-i18n="optName">输出文件名</label>
@@ -243,6 +250,8 @@
           <span class="affix" id="name-ext">.7z</span>
         </div>
       </div>
+
+      <div class="group-title" id="group-compress" data-i18n="groupCompress">压缩</div>
 
       <div class="field" id="field-level">
         <label for="opt-level">
@@ -270,6 +279,8 @@
         <p class="hint" data-i18n="volumeHint">分卷后生成 name.7z.001、name.7z.002 …，解压时选中任意一卷即可</p>
       </div>
 
+      <div class="group-title" id="group-encrypt" data-i18n="groupEncrypt">加密</div>
+
       <div class="field" id="field-password">
         <label for="opt-password" data-i18n="optPassword">密码</label>
         <div class="input-affix">
@@ -281,6 +292,8 @@
           <span data-i18n="optEncryptNames">同时加密文件名</span>
         </label>
       </div>
+
+      <div class="group-title" id="group-files" data-i18n="groupFiles">文件处理</div>
 
       <div class="field" id="field-paths">
         <label class="check">
@@ -305,6 +318,7 @@
           <span data-i18n="optSolid">固实压缩（7z，体积更小但速度更慢）</span>
         </label>
       </details>
+      </div>
     </div>
 
     <div class="panel danger-panel" id="extract-note" hidden>

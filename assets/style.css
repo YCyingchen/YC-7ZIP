@@ -1127,12 +1127,14 @@ a.icon-btn { text-decoration: none; }
 }
 .nav-btn:hover { color: var(--accent); border-color: var(--accent-line); }
 
-/* 搜索按钮本身就是那个放大镜图标，不需要边框 */
+/* 搜索按钮本身就是那个放大镜图标，不需要边框。
+   尺寸必须与地址栏里的文件夹图标一致（17px）：按钮比图标大一圈的话，
+   图标在其中居中就会整体向右偏，和左边那个文件夹不在一条竖线上。 */
 .nav-go {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 17px;
+  height: 17px;
   padding: 0;
   border-color: transparent;
   background: none;

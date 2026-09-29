@@ -1960,6 +1960,8 @@
       if (e.key === 'Escape') { e.preventDefault(); clearSearch(); renderBrowser(); }
     });
     $('search-go').addEventListener('click', () => runSearch());
+    // 搜索框右侧那个「搜索」与左边放大镜是同一件事：一个给鼠标点，一个给习惯看图标的人
+    $('search-run').addEventListener('click', () => runSearch());
     $('search-clear').addEventListener('click', () => {
       clearSearch();
       renderBrowser();

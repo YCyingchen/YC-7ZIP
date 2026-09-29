@@ -123,6 +123,16 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
     check('清除按钮清掉搜索框', (await page.inputValue('#search-input')) === '');
     check('清除后搜索说明也收起来', await page.isHidden('#search-note'));
 
+    section('3.5 右侧「搜索」按钮');
+    await page.fill('#search-input', '风景');
+    await page.click('#search-run');
+    await page.waitForTimeout(1800);
+    const runNote = (await page.textContent('#search-note').catch(() => '')) || '';
+    check('点右侧「搜索」按钮也能搜', /找到|match/.test(runNote), runNote.slice(0, 80));
+    await page.screenshot({ path: path.join(OUT, '03-搜索按钮.png'), fullPage: true });
+    await page.click('#search-clear').catch(() => {});
+    await page.waitForTimeout(400);
+
     section('4. 控制台');
     check('无 JS 运行时异常', errors.length === 0, errors.join(' | ').slice(0, 160));
   } catch (err) {

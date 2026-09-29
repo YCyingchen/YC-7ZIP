@@ -374,7 +374,12 @@ func (s *Server) runExtract(j *job.Job, req *runRequest) error {
 		Overwrite:     overwrite,
 	}
 
+	// 来源记完整路径，历史记录里才能"点一下就回到那个压缩包所在的目录"。
+	// 上传模式的压缩包落在任务工作区里，那个路径对用户没有意义，只留文件名。
 	sourceLabel := filepath.Base(archivePath)
+	if s.isAllowed(archivePath) {
+		sourceLabel = archivePath
+	}
 	volumeLabel := ""
 	if set != nil {
 		volumeLabel = set.Label()
@@ -507,6 +512,9 @@ func (s *Server) launch(j *job.Job, fn func(context.Context) error) {
 
 	go func() {
 		defer cancel()
+		// 任务收尾时写一条历史。defer 放在最前面注册、最后执行之外的顺序里
+		// 反而最靠前，所以成功、失败、取消三种结局都会记上。
+		defer s.recordHistory(j.ID)
 		err := fn(ctx)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {

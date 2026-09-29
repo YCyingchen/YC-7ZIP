@@ -86,6 +86,8 @@ type Server struct {
 
 	// uiSettings persists the wallpaper and how strongly to render it.
 	uiSettings *uiStore
+	// history 记录已经结束的压缩/解压，供界面回看。
+	history *historyStore
 }
 
 // New builds a server. webFS must contain index.html at its root.
@@ -104,6 +106,7 @@ func New(cfg Config, eng *engine.Engine, jobs *job.Manager, webFS fs.FS) *Server
 		updates:    &updateState{},
 		githubAPI:  "https://api.github.com",
 		uiSettings: newUIStore(cfg.DataDir),
+		history:    newHistoryStore(cfg.DataDir),
 	}
 	s.sources = s.resolveSources()
 	s.routes()
@@ -290,6 +293,11 @@ func (s *Server) routes() {
 
 	// 界面设置与壁纸
 	s.mux.HandleFunc("GET /api/changelog", s.handleChangelog)
+
+	// 历史记录：只读回看 + 删除单条 + 清空。删记录不动磁盘上的产物。
+	s.mux.HandleFunc("GET /api/history", s.handleHistoryList)
+	s.mux.HandleFunc("DELETE /api/history", s.handleHistoryClear)
+	s.mux.HandleFunc("DELETE /api/history/{id}", s.handleHistoryDelete)
 	s.mux.HandleFunc("GET /api/ui-settings", s.handleUISettingsGet)
 	s.mux.HandleFunc("PUT /api/ui-settings", s.handleUISettingsPut)
 	s.mux.HandleFunc("GET /api/wallpaper", s.handleWallpaperGet)

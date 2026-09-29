@@ -90,6 +90,21 @@
       enterDir: '进入目录', selectDir: '选择此目录',
       pickerTitle: '选择输出目录', pickerConfirm: '用此目录', close: '关闭',
 
+      historyTitle: '历史记录', historyToggle: '压缩 / 解压历史',
+      historyClear: '清空', historyCleared: '历史记录已清空',
+      historyClearConfirm: '清空全部历史记录？只删记录，不动 NAS 上的文件。',
+      historyDelete: '删除', historyDeleted: '记录已删除',
+      historyDeleteConfirm: '删除这条记录？只删记录，不动 NAS 上的文件。',
+      historyEmpty: '还没有记录。压缩或解压完成后，这里会留下一条。',
+      historyLoadFailed: '读取历史失败',
+      historyCompress: '压缩', historyExtract: '解压',
+      historyDone: '成功', historyError: '失败', historyCancelled: '已取消',
+      historyFrom: '来源', historyTo: '输出', historyOpenDir: '打开输出目录', historyOpenSource: '打开来源目录',
+      historyMissing: '产物已不在磁盘上（下载类结果会随任务过期被清理）',
+      historyOutDownload: '下载到本机', historyOutServer: '写入 NAS 目录',
+      historyCount: '{n} 条', historyDuration: '用时 {s}', historyMore: '（{note}）',
+      historyNow: '刚刚', historySecAgo: '{n} 秒', historyMinAgo: '{n} 分钟', historyHourAgo: '{n} 小时', historyDayAgo: '{n} 天',
+
       pathPlaceholder: '/vol1/1000/…', pathGo: '前往',
       pathNotAllowed: '这个位置不在允许访问的范围内',
       searchPlaceholder: '搜索文件…', searchGo: '搜索', searchClear: '清除搜索',
@@ -178,6 +193,21 @@
       itemsCount: '{n} item(s)', totalSize: 'Total', packedSize: 'Packed', ratio: 'Ratio',
       enterDir: 'Open folder', selectDir: 'Use this folder',
       pickerTitle: 'Choose the output folder', pickerConfirm: 'Use this folder', close: 'Close',
+
+      historyTitle: 'History', historyToggle: 'Compress / extract history',
+      historyClear: 'Clear', historyCleared: 'History cleared',
+      historyClearConfirm: 'Clear the whole history? This only removes the records, never your files.',
+      historyDelete: 'Delete', historyDeleted: 'Record deleted',
+      historyDeleteConfirm: 'Delete this record? It only removes the record, never the file.',
+      historyEmpty: 'Nothing yet. Every finished compression or extraction leaves a record here.',
+      historyLoadFailed: 'Could not load the history',
+      historyCompress: 'Compress', historyExtract: 'Extract',
+      historyDone: 'Done', historyError: 'Failed', historyCancelled: 'Cancelled',
+      historyFrom: 'From', historyTo: 'Output', historyOpenDir: 'Open output folder', historyOpenSource: 'Open source folder',
+      historyMissing: 'The result is no longer on disk (downloads expire with their job)',
+      historyOutDownload: 'Downloaded to this computer', historyOutServer: 'Written to a NAS folder',
+      historyCount: '{n} record(s)', historyDuration: 'took {s}', historyMore: '({note})',
+      historyNow: 'just now', historySecAgo: '{n}s ago', historyMinAgo: '{n} min ago', historyHourAgo: '{n} h ago', historyDayAgo: '{n} d ago',
 
       pathPlaceholder: '/vol1/1000/…', pathGo: 'Go',
       pathNotAllowed: 'That location is outside the allowed folders',
@@ -449,6 +479,8 @@
     renderVolume();
     renderResult();
     renderRunButton();
+    // 面板开着就跟着换语言，否则要关掉重开才看到新文案
+    if (!$('history-modal').hidden) renderHistory();
     $('repo-link').title = t('repo');
     // 设置面板里的更新渠道选择器也是按语言拼的，切语言要跟着重画
     if (settingsState.update) renderUpdateStatus(settingsState.update);
@@ -1599,6 +1631,11 @@
   function finishJob(job) {
     hideProgress();
     setBusy(false);
+    // 面板开着时任务结束，历史里应马上多一条。稍等一下再问：服务端是在任务
+    // 收尾时才记的，刚看到 done 就查，可能抢在它落盘之前。
+    setTimeout(function () {
+      if (!$('history-modal').hidden) loadHistory();
+    }, 800);
     if (job.status === 'done') {
       state.result = job;
       state.lastError = null;
@@ -2154,6 +2191,7 @@
     $('view-list').classList.toggle('is-active', state.view === 'list');
     $('view-grid').classList.toggle('is-active', state.view === 'grid');
     bindSettingsEvents();
+    bindHistoryEvents();
     loadSettings();
     checkHealth().then(openFromQuery);
     setInterval(checkHealth, 60000);
@@ -2472,6 +2510,186 @@
     } catch (e) {
       host.innerHTML = '<p class="release-more">' + escapeHtml(t('changelogUnavailable')) + '</p>';
     }
+  }
+
+  // ------------------------------------------------------------ 历史记录
+  //
+  // 记录由服务端落盘（数据目录下的 history/），所以换浏览器、重启服务都还在。
+  // 这里只负责取回来渲染，以及"顺着记录回到现场"：打开输出目录、定位来源文件。
+
+  const historyState = { entries: [] };
+
+  function historyKindLabel(kind) {
+    return kind === 'extract' ? t('historyExtract') : t('historyCompress');
+  }
+
+  function historyStatusLabel(status) {
+    if (status === 'error') return t('historyError');
+    if (status === 'cancelled') return t('historyCancelled');
+    return t('historyDone');
+  }
+
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function fmtAgo(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const sec = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (sec < 60) return t('historyNow');
+    if (sec < 3600) return t('historyMinAgo', { n: String(Math.round(sec / 60)) });
+    if (sec < 86400) return t('historyHourAgo', { n: String(Math.round(sec / 3600)) });
+    return t('historyDayAgo', { n: String(Math.round(sec / 86400)) });
+  }
+
+  function fmtDuration(ms) {
+    const zh = state.lang !== 'en';
+    const raw = Math.max(0, Number(ms) || 0);
+    // 小文件几十毫秒就完了，写成「0.0 秒」等于没说
+    if (raw < 1000) return Math.round(raw) + (zh ? ' 毫秒' : 'ms');
+    const s = raw / 1000;
+    if (s < 60) return (s < 10 ? s.toFixed(1) : String(Math.round(s))) + (zh ? ' 秒' : 's');
+    const m = Math.floor(s / 60);
+    const rest = Math.round(s % 60);
+    return zh ? m + ' 分 ' + rest + ' 秒' : m + 'm' + rest + 's';
+  }
+
+  function historyItemHtml(e) {
+    const sep = state.lang === 'en' ? ', ' : '、';
+    const sources = e.sources || [];
+    const outputs = e.outputs || [];
+    const rows = [];
+
+    if (sources.length) {
+      const show = sources.slice(0, 3).join(sep) + (sources.length > 3 ? ' … (+' + (sources.length - 3) + ')' : '');
+      rows.push('<div class="history-row"><b>' + escapeHtml(t('historyFrom')) + '</b><span title="' + escapeHtml(sources.join('\n')) + '">' + escapeHtml(show) + '</span></div>');
+    }
+
+    const outNames = outputs.map((f) => f.name + (f.size ? ' (' + humanBytes(f.size) + ')' : '')).slice(0, 3);
+    const outWhere = e.output_mode === 'server' ? (e.output_dir || '') : t('historyOutDownload');
+    let outValue = outWhere;
+    if (outNames.length) {
+      outValue += ' · ' + outNames.join(sep);
+      if (outputs.length > 3) outValue += ' … (+' + (outputs.length - 3) + ')';
+    }
+    if (e.output_note) outValue += ' ' + t('historyMore', { note: e.output_note });
+    rows.push('<div class="history-row"><b>' + escapeHtml(t('historyTo')) + '</b><span>' + escapeHtml(outValue) + '</span></div>');
+
+    if (e.message && e.status !== 'done') {
+      rows.push('<div class="history-row history-warn"><b>' + escapeHtml(t('errorTitle')) + '</b><span>' + escapeHtml(e.message) + '</span></div>');
+    }
+    if (e.missing) {
+      rows.push('<div class="history-row history-warn"><b></b><span>' + escapeHtml(t('historyMissing')) + '</span></div>');
+    }
+
+    const actions = [];
+    if (e.output_mode === 'server' && e.output_dir) {
+      actions.push('<button class="link-btn" type="button" data-act="dir" data-path="' + escapeHtml(e.output_dir) + '">' + escapeHtml(t('historyOpenDir')) + '</button>');
+    }
+    const firstSource = sources.find((s) => String(s).startsWith('/'));
+    if (firstSource) {
+      actions.push('<button class="link-btn" type="button" data-act="source" data-path="' + escapeHtml(firstSource) + '">' + escapeHtml(t('historyOpenSource')) + '</button>');
+    }
+    actions.push('<button class="link-btn" type="button" data-act="delete">' + escapeHtml(t('historyDelete')) + '</button>');
+
+    return '<article class="history-item" data-id="' + escapeHtml(e.id) + '">' +
+      '<div class="history-head">' +
+        '<span class="history-kind" data-kind="' + escapeHtml(e.kind) + '">' + escapeHtml(historyKindLabel(e.kind)) + '</span>' +
+        '<span class="history-status" data-status="' + escapeHtml(e.status) + '">' + escapeHtml(historyStatusLabel(e.status)) + '</span>' +
+        '<span class="history-when">' + escapeHtml(fmtClock(e.finished_at)) + ' · ' + escapeHtml(fmtAgo(e.finished_at)) + '</span>' +
+        '<span class="history-dur">' + escapeHtml(t('historyDuration', { s: fmtDuration(e.duration_ms) })) + '</span>' +
+        '<span class="history-actions">' + actions.join('') + '</span>' +
+      '</div>' + rows.join('') + '</article>';
+  }
+
+  function renderHistory() {
+    const host = $('history-body');
+    const list = historyState.entries || [];
+    $('history-count').textContent = list.length ? t('historyCount', { n: String(list.length) }) : '';
+    host.innerHTML = list.length
+      ? list.map(historyItemHtml).join('')
+      : '<p class="history-empty">' + escapeHtml(t('historyEmpty')) + '</p>';
+  }
+
+  async function loadHistory() {
+    const host = $('history-body');
+    host.innerHTML = '<p class="history-empty">' + escapeHtml(t('loading')) + '</p>';
+    try {
+      const data = await api('/api/history', {}, 15000);
+      historyState.entries = (data && data.entries) || [];
+    } catch {
+      historyState.entries = [];
+      host.innerHTML = '<p class="history-empty">' + escapeHtml(t('historyLoadFailed')) + '</p>';
+      return;
+    }
+    renderHistory();
+  }
+
+  async function openHistory() {
+    $('history-modal').hidden = false;
+    await loadHistory();
+  }
+
+  // 顺着一条记录回到现场：输出目录直接打开，来源文件定位到它所在的目录并选中。
+  async function openHistoryDir(path) {
+    if (!path) return;
+    $('history-modal').hidden = true;
+    setSource('server');
+    if (!await loadDir(path)) toast(t('pathNotAllowed'), 'warn');
+  }
+
+  async function openHistorySource(path) {
+    if (!path) return;
+    $('history-modal').hidden = true;
+    setSource('server');
+    await gotoPath(path);
+  }
+
+  async function clearHistory() {
+    if (!(historyState.entries || []).length) return;
+    if (!window.confirm(t('historyClearConfirm'))) return;
+    try {
+      await api('/api/history', { method: 'DELETE' }, 15000);
+      toast(t('historyCleared'), 'info');
+      await loadHistory();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function deleteHistory(id) {
+    if (!id) return;
+    if (!window.confirm(t('historyDeleteConfirm'))) return;
+    try {
+      await api('/api/history/' + encodeURIComponent(id), { method: 'DELETE' }, 15000);
+      toast(t('historyDeleted'), 'info');
+      await loadHistory();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  function bindHistoryEvents() {
+    $('history-toggle').addEventListener('click', openHistory);
+    $('history-close').addEventListener('click', function () { $('history-modal').hidden = true; });
+    $('history-modal').addEventListener('click', function (e) {
+      if (e.target === $('history-modal')) $('history-modal').hidden = true;
+    });
+    $('history-clear').addEventListener('click', function () { clearHistory(); });
+    $('history-body').addEventListener('click', function (ev) {
+      const btn = ev.target.closest('[data-act]');
+      if (!btn) return;
+      const item = btn.closest('.history-item');
+      const id = item && item.dataset.id;
+      const act = btn.dataset.act;
+      if (act === 'delete') deleteHistory(id);
+      else if (act === 'dir') openHistoryDir(btn.dataset.path);
+      else if (act === 'source') openHistorySource(btn.dataset.path);
+    });
   }
 
   function openSettings() {

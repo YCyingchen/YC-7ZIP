@@ -1600,7 +1600,8 @@
     const common = {
       password,
       output_mode: serverOutput ? 'server' : 'download',
-      output_dir: serverOutput ? $('opt-output-dir').value.trim() : '',
+      // 兜底：界面上没填就用推导出来的默认目录，别把空路径交给服务端
+      output_dir: serverOutput ? ($('opt-output-dir').value.trim() || defaultOutputDir()) : '',
     };
 
     if (state.mode === 'compress') {
@@ -2210,6 +2211,11 @@
     }
     togglePick(entry, true);
     renderBrowser();
+
+    // 带路径进来时「写入 NAS 目录」是默认选中的，但那个目录框还空着——
+    // 不补这一步，点开始解压会被服务端挡回来（"路径为空"）。这是从文件管理器
+    // 「打开方式」进这个应用的主路径，等于主路径一直是坏的。
+    setOutputMode(state.outputMode);
 
     // 让入口一眼可见：闪一下开始按钮
     $('btn-run').classList.add('pulse');

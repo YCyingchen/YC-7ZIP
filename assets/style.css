@@ -294,7 +294,9 @@ a { color: var(--accent); }
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, .85fr);
   gap: clamp(12px, 1.4vw, 20px);
-  align-items: start;
+  /* stretch 而不是 start：两列等高之后，左列才有"多余的高度"可以分给
+     文件浏览器（见文件末尾那段）。 */
+  align-items: stretch;
 }
 
 .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -1781,4 +1783,43 @@ body.has-wallpaper::before {
    透，滑块上写的"不透明"和眼睛看到的对不上。 */
 body.has-wallpaper .panel {
   backdrop-filter: blur(10px);
+}
+
+/* ------------------------------------------- 两列模式下让左列吃满高度 */
+
+/* 右列（格式与参数）通常比左列（文件浏览器 + 输出位置）长，宽屏下左列下方
+   会空出一大块——壁纸从那块透出来，看着像"没铺满"。这里让文件浏览器去吃
+   这段高度：它本来就该越大越好，多出来的空间直接变成能多看的几行文件。
+   矮窗口与窄屏不启用：那边留白本来就少，列表另有 max-height 限制，
+   硬拉反而会把控件挤出视口。 */
+@media (min-width: 941px) and (min-height: 621px) {
+  .col-source > .panel:first-child {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* :not([hidden]) 是必须的：切到「本机上传」时这块会被 hidden，而
+     display:flex 会盖掉 [hidden] 自带的 display:none，于是"藏起来的那块"
+     又冒出来了。 */
+  #browser-wrap:not([hidden]) {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .browser-list {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 200px;
+  }
+  #browser-gallery:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 200px;
+    max-height: none;
+    overflow-y: auto;
+    /* 行按内容高度排、靠上堆。少了这句，网格会把唯一那几行拉满整个高度，
+       缩略图被抻成长条——填空缺不能拿"把东西拉变形"来换。 */
+    align-content: start;
+  }
 }

@@ -537,18 +537,31 @@ a { color: var(--accent); }
 /* 分组小标题：参数多起来之后，「输出 / 压缩 / 加密 / 文件处理」这层
    比一排分隔线更好认，也不会把面板切得七零八落。 */
 .group-title {
-  padding: 13px 14px 3px;
-  font-size: 10.5px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 15px 14px 5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: .09em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
+  letter-spacing: .04em;
+  /* 用 ink-dim 而不是 ink-faint：这层是"结构"，不是补充说明。面板一旦半透明
+     （有壁纸时），faint 会被壁纸糊得几乎看不见，看着像脏点。 */
+  color: var(--ink-dim);
+}
+
+/* 标题右侧拉一条细线，分组边界不用靠"更淡的字"来表达，
+   半透明面板下也还认得出层次。 */
+.group-title::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
 }
 
 /* 面板头右侧那句说明（当前格式的注意事项）；没有内容时不占位置 */
 .head-note {
   font-size: 11.5px;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   max-width: 62%;
   overflow: hidden;
   text-overflow: ellipsis;

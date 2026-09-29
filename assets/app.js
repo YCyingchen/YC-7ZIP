@@ -1396,6 +1396,10 @@
     $('group-output').hidden = !compressing;
     $('group-compress').hidden = !compressing;
     $('advanced-box').hidden = !compressing;
+    // 解压时要填的是"解压密码"，分组却叫「加密」——看着像在让你设置加密；
+    // 而「同时加密文件名」本来就是压缩选项。两样都只在压缩模式里出现。
+    $('group-encrypt').hidden = !compressing;
+    $('wrap-encrypt-names').hidden = !compressing;
     // 「保留目录结构 / 覆盖同名文件」是解压才用得上的，压缩时收起来；
     // 当前格式说明只在压缩时有意义（解压选的是压缩包，不选格式）。
     $('group-files').hidden = compressing;

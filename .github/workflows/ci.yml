@@ -64,17 +64,14 @@ jobs:
           ch=$(python3 tools/version.py channel)
           echo "版本 $v，通道 $ch"
 
-          # compose 里的镜像标签也要跟着版本走
-          if ! grep -q "ycyingchen/yc-7zip:$v" deploy/fpk/app/docker/docker-compose.yaml; then
-            echo "deploy/fpk/app/docker/docker-compose.yaml 的镜像标签不是 $v" >&2
-            exit 1
-          fi
-
+          # fpk 现在是原生运行（cmd/main 直接拉起包内的二进制），不再走 Docker。
+          # 以前这里还比对 app/docker/docker-compose.yaml 的镜像标签，那份文件
+          # 随"fpk 去 Docker 化"一起删掉了，检查留着的唯一后果是 CI 常年变红。
           base=deploy/fpk
           for f in manifest ICON.PNG ICON_256.PNG \
                    app/ui/config app/ui/images/icon_64.png app/ui/images/icon_256.png \
-                   app/docker/docker-compose.yaml \
-                   cmd/main config/privilege config/resource; do
+                   cmd/main config/privilege config/resource \
+                   wizard/install wizard/config; do
             if [ ! -e "$base/$f" ]; then
               echo "缺少 fpk 必需文件：$base/$f"
               exit 1

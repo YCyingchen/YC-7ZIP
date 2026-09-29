@@ -1039,10 +1039,15 @@ a.icon-btn { text-decoration: none; }
 
 /* --------------------------------------------------------- 地址栏与搜索 */
 
-/* 一层层点太慢了：粘一个路径进去，或者搜个名字。两者各占一半，窄屏叠成两行。 */
+/* 一层层点太慢了：粘一个路径进去，或者搜个名字。
+   宽度不再各占一半——那样就是两条长条摊满整行，而里面常常只有几个字。
+   现在各按需要定宽（路径通常比搜索词长，给它多一点），右侧空出来的地方放
+   刷新按钮：行尾有了收束，也不再是"两个空盒子拉满一行"。
+   窄屏（≤560px）仍旧叠成两行。 */
 .browser-nav {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 8px;
 }
 .nav-field {
@@ -1056,6 +1061,11 @@ a.icon-btn { text-decoration: none; }
   border-radius: var(--radius-sm);
   background: var(--bg-sunk);
 }
+/* 可缩不可伸：容器窄了跟着变短，容器宽了也不会又摊满整行 */
+.path-field { flex: 0 1 380px; }
+.search-field { flex: 0 1 280px; }
+.nav-refresh { flex: none; margin-left: auto; }
+
 .nav-field:focus-within { border-color: var(--accent); }
 .nav-glyph { flex: none; color: var(--ink-faint); }
 

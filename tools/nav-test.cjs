@@ -36,6 +36,11 @@ function section(t) { console.log(`\n\x1b[1;36m== ${t}\x1b[0m`); }
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // 断言是按中文写的，先把界面语言钉死：容器里的浏览器默认 en-US，界面会跟着
+  // 变英文，于是"失败"的是断言而不是功能（history-test 同样处理）。
+  await page.addInitScript(() => {
+    try { localStorage.setItem('yc7zip-lang', 'zh-CN'); } catch (e) { /* 隐私模式 */ }
+  });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('requestfailed', (r) => errors.push(`${r.method()} ${r.url()}`));

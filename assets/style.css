@@ -1064,9 +1064,11 @@ a.icon-btn { text-decoration: none; }
   border-radius: var(--radius-sm);
   background: var(--bg-sunk);
 }
-/* 可缩不可伸：容器窄了跟着变短，容器宽了也不会又摊满整行 */
+/* 路径框按需要定宽（它常装一条长路径，但不必占满整行）；搜索框吃掉剩下的
+   宽度，右边缘停在刷新图标前面——中间那点间隙就是这一行的 gap。
+   两者都可缩：容器窄了先缩路径框，再缩搜索框。 */
 .path-field { flex: 0 1 380px; }
-.search-field { flex: 0 1 280px; }
+.search-field { flex: 1 1 240px; }
 /* 刷新做成和"搜索"一样的小图标按钮：一个文字按钮孤零零挂在行尾，
    既比旁边高，也把右侧拉得不齐。 */
 .nav-refresh {
@@ -1078,7 +1080,6 @@ a.icon-btn { text-decoration: none; }
   border-color: transparent;
   background: none;
   flex: none;
-  margin-left: auto;
 }
 
 .nav-field:focus-within { border-color: var(--accent); }

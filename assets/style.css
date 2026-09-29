@@ -982,17 +982,18 @@ a.icon-btn { text-decoration: none; }
 .source-tabs {
   display: flex;
   gap: 4px;
-  padding: 10px 12px 0;
+  /* 下边留出空隙：标签底边直接压着下一条分隔线，看着像连成了一体 */
+  padding: 10px 12px 12px;
 }
 
 .source-tab {
-  padding: 7px 16px;
+  padding: 5px 13px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-faint);
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   cursor: pointer;
   transition: background .16s, color .16s, border-color .16s;
 }
@@ -1006,12 +1007,27 @@ a.icon-btn { text-decoration: none; }
 
 /* --------------------------------------------------------- 路径面包屑 */
 
+/* 面包屑这一行上下各有一条分隔线。用伪元素画、左右各收进 14px：直接写 border
+   的话线会通到卡片边，而右边那张卡里的分组线是内缩的，两张卡看起来不像一套。 */
 .browser-head {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  border-top: 1px solid var(--line-soft);
+  border-top: 0;
+  border-bottom: 0;
+  position: relative;
 }
+.browser-head::before,
+.browser-head::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: var(--line-soft);
+}
+.browser-head::before { top: 0; }
+.browser-head::after { bottom: 0; }
 
 .crumbs {
   display: flex;

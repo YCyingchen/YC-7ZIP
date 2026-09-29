@@ -839,10 +839,9 @@ def cmd_publish(args: argparse.Namespace) -> int:
     status = git("status", "--porcelain").stdout.strip()
     if status:
         message = args.message or f"{v}: 常规更新"
-        git("-c", "user.name=YCyingchen",
-            "-c", "user.email=ycyingchen@users.noreply.github.com",
-            "commit", "-q", "-am", message, check=False)
-        # -am 不会带上未跟踪的文件，补一次 add
+        # 一次 add -A 再一次提交。以前是先 `commit -am` 再补 `add -A` 再提交一次：
+        # -am 不带上未跟踪的新文件，于是每次发布都留下两个同名提交，
+        # 历史里看着像重复发布了一遍。add -A 本身就会把删除也staged，一次就够。
         git("add", "-A")
         git("-c", "user.name=YCyingchen",
             "-c", "user.email=ycyingchen@users.noreply.github.com",

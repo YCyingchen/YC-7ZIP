@@ -60,7 +60,7 @@ function section(t) { console.log('\n\x1b[1;36m== ' + t + '\x1b[0m'); }
   const waitJob = async (id) => {
     let status = '';
     for (let i = 0; i < 80; i++) {
-      status = JSON.parse(await api('/api/jobs/' + id)).status;
+      status = JSON.parse(await api('api/jobs/' + id)).status;
       if (status === 'done' || status === 'error') break;
       await page.waitForTimeout(300);
     }
@@ -70,10 +70,10 @@ function section(t) { console.log('\n\x1b[1;36m== ' + t + '\x1b[0m'); }
   try {
     section('0. 准备');
     await page.goto(BASE + '/', { waitUntil: 'networkidle' });
-    await api('/api/history', { method: 'DELETE' });
+    await api('api/history', { method: 'DELETE' });
 
-    const job = JSON.parse(await api('/api/jobs?kind=compress', { method: 'POST' }));
-    await api('/api/jobs/' + job.id + '/run', {
+    const job = JSON.parse(await api('api/jobs?kind=compress', { method: 'POST' }));
+    await api('api/jobs/' + job.id + '/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -117,8 +117,8 @@ function section(t) { console.log('\n\x1b[1;36m== ' + t + '\x1b[0m'); }
     check('空态有说明文案', (await page.innerText('#history-body')).includes('还没有记录'));
 
     section('4. 解压也记一条');
-    const j2 = JSON.parse(await api('/api/jobs?kind=extract', { method: 'POST' }));
-    await api('/api/jobs/' + j2.id + '/run', {
+    const j2 = JSON.parse(await api('api/jobs?kind=extract', { method: 'POST' }));
+    await api('api/jobs/' + j2.id + '/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

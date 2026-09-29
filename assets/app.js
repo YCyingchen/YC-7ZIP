@@ -35,7 +35,7 @@
       optName: '输出文件名', optLevel: '压缩级别',
       levelFast: '更快', levelBalanced: '均衡', levelMax: '最小体积',
       optPassword: '密码', show: '显示', hide: '隐藏', optEncryptNames: '同时加密文件名',
-      optVolume: '分卷大小', volumeNone: '不分卷（单个文件）',
+      optVolume: '分卷大小', volumeNone: '不分卷（单个文件）', volumeCustom: '自定义…',
       volumeHint: '分卷后生成 name.7z.001、name.7z.002 …，解压时选中任意一卷即可',
       optPreserve: '保留目录结构', optOverwrite: '覆盖同名文件',
       advanced: '高级选项', optThreads: '线程数', threadsHint: '0 表示由 7-Zip 自动决定',
@@ -138,7 +138,7 @@
       optName: 'Output name', optLevel: 'Compression level',
       levelFast: 'Faster', levelBalanced: 'Balanced', levelMax: 'Smallest',
       optPassword: 'Password', show: 'Show', hide: 'Hide', optEncryptNames: 'Also encrypt file names',
-      optVolume: 'Split volume size', volumeNone: 'No split (single file)',
+      optVolume: 'Split volume size', volumeNone: 'No split (single file)', volumeCustom: 'Custom…',
       volumeHint: 'Splitting produces name.7z.001, name.7z.002 …; select any part to extract',
       optPreserve: 'Preserve folder structure', optOverwrite: 'Overwrite existing files',
       advanced: 'Advanced', optThreads: 'Threads', threadsHint: '0 lets 7-Zip decide',
@@ -1312,7 +1312,7 @@
 
     if (state.mode === 'compress') {
       // 压缩侧展示分卷设置的结果，让用户知道会生成什么
-      const size = $('opt-volume').value;
+      const size = volumeValue();
       if (!size) { panel.hidden = true; return; }
       const f = currentFormat() || {};
       panel.hidden = false;
@@ -1378,6 +1378,20 @@
     $('field-volume-size').hidden = state.mode !== 'compress' || !f.supports_volume;
     $('wrap-solid').hidden = f.id !== '7z';
     $('opt-volume').disabled = state.mode !== 'compress' || !f.supports_volume;
+    syncVolumeCustom();
+  }
+
+  // 分卷大小：下拉给的是预设值，选「自定义…」时改由数字 + 单位拼出来。
+  // 7-Zip 本来就认 "100m" / "2g" 这种写法，所以拼好直接当 volume_size 传下去。
+  function volumeValue() {
+    if ($('opt-volume').value !== 'custom') return $('opt-volume').value;
+    const n = parseInt($('opt-volume-num').value, 10);
+    if (!n || n < 1) return '';
+    return n + ($('opt-volume-unit').value === 'g' ? 'g' : 'm');
+  }
+
+  function syncVolumeCustom() {
+    $('volume-custom').hidden = $('opt-volume').value !== 'custom';
   }
 
   // 模式相关的外观：哪些块属于"压缩专属"、标题叫什么。
@@ -1595,7 +1609,7 @@
         format: state.format,
         level: Number($('opt-level').value),
         encrypt_names: $('opt-encrypt-names').checked,
-        volume_size: $('opt-volume').value,
+        volume_size: volumeValue(),
         name: $('opt-name').value.trim(),
         threads: Number($('opt-threads').value) || 0,
         solid: $('opt-solid').checked,
@@ -2036,7 +2050,10 @@
       input.type = showing ? 'password' : 'text';
       $('toggle-password').textContent = t(showing ? 'show' : 'hide');
     });
-    $('opt-volume').addEventListener('change', renderVolume);
+    // 换预设时把"自定义"那行收起或展开；三种输入都要重算分卷说明
+    $('opt-volume').addEventListener('change', function () { syncVolumeCustom(); renderVolume(); });
+    $('opt-volume-num').addEventListener('input', renderVolume);
+    $('opt-volume-unit').addEventListener('change', renderVolume);
     $('opt-name').addEventListener('input', renderVolume);
     $('out-server').addEventListener('change', () => setOutputMode('server'));
     $('out-download').addEventListener('change', () => setOutputMode('download'));

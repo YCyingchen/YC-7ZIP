@@ -283,7 +283,17 @@
           <option value="1g">1 GB</option>
           <option value="2g">2 GB</option>
           <option value="4g">4 GB</option>
+          <option value="custom" data-i18n="volumeCustom">自定义…</option>
         </select>
+        <!-- 预设之外的尺寸：一个数字 + 一个单位。7-Zip 本来就认 "100m"、"2g"
+             这种写法，所以这里拼出来的值可以原样当 volume_size 传下去。 -->
+        <div class="volume-custom" id="volume-custom" hidden>
+          <input type="number" id="opt-volume-num" min="1" step="1" inputmode="numeric" placeholder="100">
+          <select id="opt-volume-unit" aria-label="分卷单位">
+            <option value="m">MB</option>
+            <option value="g">GB</option>
+          </select>
+        </div>
         <p class="hint" data-i18n="volumeHint">分卷后生成 name.7z.001、name.7z.002 …，解压时选中任意一卷即可</p>
       </div>
 

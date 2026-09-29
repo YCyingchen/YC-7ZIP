@@ -696,6 +696,8 @@ select { cursor: pointer; appearance: none; padding-right: 30px;
 
 input[type="range"] {
   width: 100%;
+  /* 浏览器给 range 默认留了 2px 外边距，会让它比上下两行文字各宽出 2px */
+  margin: 0;
   appearance: none;
   height: 4px;
   border-radius: 999px;
@@ -725,10 +727,22 @@ input[type="range"]::-moz-range-thumb {
 .range-scale {
   display: flex;
   justify-content: space-between;
+  /* 两端留出滑块圆点的一半宽（16px 的圆 → 8px）：圆点滑到端点时圆心距轨道边
+     正好 8px，标签贴着容器边的话，看起来就比滑块两头"宽"出去一截。 */
+  padding: 0 8px;
   margin-top: 6px;
   font-size: 10.5px;
   color: var(--ink-faint);
 }
+
+/* 自定义分卷：一个数字 + 一个单位，宽度分给数字那边 */
+.volume-custom {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.volume-custom input { flex: 1 1 auto; min-width: 0; }
+.volume-custom select { flex: 0 0 92px; }
 
 .check {
   display: flex;
@@ -1054,7 +1068,9 @@ a.icon-btn { text-decoration: none; }
   /* 左右内缩：不加这两下，地址栏与搜索框的边框会一路顶到面板外框上，
      看着像"没装进面板里"。14px 与面板头（.panel-head）对齐。 */
   padding: 0 14px;
-  margin: 0 0 8px;
+  /* 与上面那条分隔线拉开：贴着的话，地址栏的边框会和它连成一条线。
+     下面同理，与文件列表/图览分开一点。 */
+  margin: 12px 0 10px;
 }
 .nav-field {
   display: flex;
@@ -1153,8 +1169,12 @@ a.icon-btn { text-decoration: none; }
 }
 
 @media (max-width: 560px) {
+  /* 窄屏：地址栏独占一行，搜索框与刷新并排。三个盒子各占一行的话，
+     刷新那个只有图标宽的按钮会白占一整行。 */
   .browser-nav { flex-wrap: wrap; }
-  .nav-field { flex: 1 1 100%; }
+  .path-field { flex: 1 1 100%; }
+  .search-field { flex: 1 1 0; min-width: 0; }
+  .nav-refresh { flex: 0 0 auto; }
 }
 
 /* ------------------------------------------------------------ 文件列表 */
